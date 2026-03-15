@@ -511,7 +511,7 @@ export function ShamirSetupDialog({
                                             Email Backup
                                         </p>
                                         <p className="text-xs text-muted-foreground">
-                                            Sent to your email address
+                                            Stored securely, delivered via email during recovery
                                         </p>
                                     </div>
                                 </div>
@@ -591,7 +591,7 @@ export function ShamirSetupDialog({
                         {distribution.email > 0 && (
                             <div className="space-y-2">
                                 <Label htmlFor="email-recipient">
-                                    Email Recipient (optional)
+                                    Recovery Email (optional)
                                 </Label>
                                 <Input
                                     id="email-recipient"
@@ -602,6 +602,9 @@ export function ShamirSetupDialog({
                                         setEmailRecipient(e.target.value)
                                     }
                                 />
+                                <p className="text-xs text-muted-foreground">
+                                    A confirmation will be sent now. The actual share will be delivered when you initiate recovery.
+                                </p>
                             </div>
                         )}
 
