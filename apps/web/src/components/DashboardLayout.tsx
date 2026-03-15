@@ -70,10 +70,13 @@ const menuGroups = [
     { icon: Share2, label: "Shares", path: "/shares" },
     { icon: MessageCircle, label: "Private Chat", path: "/chat" },
   ],
-  // System & settings
+  // System
   [
     { icon: Trash2, label: "Trash", path: "/trash" },
     { icon: Send, label: "Sent", path: "/sends" },
+  ],
+  // Settings (always last)
+  [
     { icon: Settings, label: "Settings", path: "/settings" },
   ],
 ];
@@ -301,7 +304,7 @@ function DesktopLayoutContent({
   // Build grouped menu items based on feature flags + plan
   const resolvedGroups = menuGroups.map((group, i) => {
     // Inject Quantum Mesh only if server-enabled AND plan allows it
-    if (i === 2 && p2pEnabled && hasPlanP2P) return [...group, quantumMeshItem];
+    if (i === 1 && p2pEnabled && hasPlanP2P) return [...group, quantumMeshItem];
     return group;
   });
 
