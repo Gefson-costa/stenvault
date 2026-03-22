@@ -45,18 +45,18 @@ interface MessageBubbleProps {
     showAvatar?: boolean;
     /** Name of the sender (for avatar initials on received messages) */
     senderName?: string;
-    /** Cached plaintext for own sent messages (since they're encrypted for the recipient) */
-    sentPlaintext?: string;
+    /** SVCP channel secret for decryption (both sender + recipient use the same key) */
+    channelSecret?: CryptoKey | null;
 }
 
 /**
  * Message Bubble - Individual message bubble
  */
-export function MessageBubble({ message, isOwn, showAvatar = true, senderName, sentPlaintext }: MessageBubbleProps) {
+export function MessageBubble({ message, isOwn, showAvatar = true, senderName, channelSecret }: MessageBubbleProps) {
     const [decryptedContent, setDecryptedContent] = useState<string | null>(null);
     const [isDecrypting, setIsDecrypting] = useState(false);
 
-    const { decryptMessage } = useE2ECrypto();
+    const { decryptMessage, decryptChannelMessage } = useE2ECrypto();
     const { getUnlockedHybridSecretKey, isUnlocked } = useMasterKey();
     const utils = trpc.useUtils();
 
@@ -68,20 +68,49 @@ export function MessageBubble({ message, isOwn, showAvatar = true, senderName, s
         }
     );
 
-    // Auto-decrypt encrypted messages using hybrid KEM
-    // NOTE: Only RECEIVED messages can be decrypted. Own sent messages are
-    // encrypted for the recipient's key, so the sender cannot decrypt them.
-    // Own messages use the sentPlaintext prop (cached from send time).
+    // Auto-decrypt encrypted messages
+    // SVCP: messages without kemCiphertext use channel secret (both sender + recipient)
+    // Legacy: messages with kemCiphertext use per-message KEM (recipient only)
     useEffect(() => {
-        if (message.isEncrypted && message.content && message.iv && message.salt && message.kemCiphertext) {
-            // Own messages are encrypted for the recipient — cannot decrypt with our key
-            if (isOwn) {
-                setDecryptedContent(sentPlaintext ?? message.content);
+        if (!message.isEncrypted) {
+            setDecryptedContent(message.content);
+            return;
+        }
+
+        if (!message.content || !message.iv || !message.salt) {
+            setDecryptedContent(message.content);
+            return;
+        }
+
+        // SVCP path: no kemCiphertext → use channel secret (both own + received)
+        if (!message.kemCiphertext) {
+            if (!channelSecret) {
+                setDecryptedContent(isUnlocked ? "[Channel not ready]" : "[Vault locked]");
                 return;
             }
-
             setIsDecrypting(true);
+            (async () => {
+                try {
+                    const plain = await decryptChannelMessage(
+                        message.content!,
+                        message.iv!,
+                        message.salt!,
+                        channelSecret
+                    );
+                    setDecryptedContent(plain);
+                } catch (err) {
+                    console.warn("[SVCP] Decrypt failed:", err);
+                    setDecryptedContent("[Encrypted message]");
+                } finally {
+                    setIsDecrypting(false);
+                }
+            })();
+            return;
+        }
 
+        // Legacy: per-message KEM (only recipient can decrypt)
+        if (message.kemCiphertext && !isOwn) {
+            setIsDecrypting(true);
             (async () => {
                 try {
                     const hybridSecretKey = await getUnlockedHybridSecretKey();
@@ -98,16 +127,22 @@ export function MessageBubble({ message, isOwn, showAvatar = true, senderName, s
                         hybridSecretKey
                     );
                     setDecryptedContent(plain);
-                } catch {
+                } catch (err) {
+                    console.warn("[Legacy KEM] Decrypt failed:", err);
                     setDecryptedContent("[Decryption error]");
                 } finally {
                     setIsDecrypting(false);
                 }
             })();
-        } else {
-            setDecryptedContent(message.content);
+            return;
         }
-    }, [message, isOwn, sentPlaintext, decryptMessage, getUnlockedHybridSecretKey, isUnlocked]);
+
+        // Legacy own message with KEM: can't decrypt (sender used per-message KEM)
+        if (message.kemCiphertext && isOwn) {
+            setDecryptedContent("[Encrypted - legacy message]");
+        }
+    }, [message, isOwn, channelSecret, decryptMessage, decryptChannelMessage,
+        getUnlockedHybridSecretKey, isUnlocked]);
 
     const displayContent = decryptedContent || message.content;
     const timeStr = format(new Date(message.createdAt), "HH:mm");
@@ -157,8 +192,8 @@ export function MessageBubble({ message, isOwn, showAvatar = true, senderName, s
             {!isOwn && (
                 <div className="flex-shrink-0">
                     {showAvatar ? (
-                        <Avatar className="h-8 w-8 border-2 border-white dark:border-slate-800 shadow-sm">
-                            <AvatarFallback className="bg-gradient-to-br from-slate-300 to-slate-400 dark:from-slate-700 dark:to-slate-600 text-white text-xs font-semibold">
+                        <Avatar className="h-8 w-8 border-2 border-background shadow-sm">
+                            <AvatarFallback className="bg-muted text-muted-foreground text-xs font-semibold">
                                 {initials}
                             </AvatarFallback>
                         </Avatar>
@@ -181,8 +216,8 @@ export function MessageBubble({ message, isOwn, showAvatar = true, senderName, s
                         "relative px-4 py-2.5 rounded-2xl shadow-sm",
                         "transition-all duration-200 hover:shadow-md",
                         isOwn
-                            ? "bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-tr-sm"
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-tl-sm"
+                            ? "bg-primary text-primary-foreground rounded-tr-sm"
+                            : "bg-muted text-foreground rounded-tl-sm"
                     )}
                 >
                     {/* Encryption indicator */}
@@ -238,14 +273,14 @@ export function MessageBubble({ message, isOwn, showAvatar = true, senderName, s
                     <div
                         className={cn(
                             "flex items-center gap-1.5 mt-1 text-xs",
-                            isOwn ? "text-white/80" : "text-slate-500 dark:text-slate-400"
+                            isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
                         )}
                     >
                         <span>{timeStr}</span>
 
                         {isOwn && (
                             message.isRead ? (
-                                <CheckCheck className="h-3.5 w-3.5 text-blue-200" />
+                                <CheckCheck className="h-3.5 w-3.5 text-primary-foreground/90" />
                             ) : (
                                 <Check className="h-3.5 w-3.5" />
                             )

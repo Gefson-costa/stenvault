@@ -157,23 +157,9 @@ export function SigningPanel({
     };
   }, []);
 
-  // If user doesn't have signature keys, show setup message
+  // If user doesn't have signature keys, show nothing — avoid noise
   if (!canSign) {
-    return (
-      <div className={cn('rounded-lg border border-muted bg-muted/30 p-4', className)}>
-        <div className="flex items-center gap-3 text-muted-foreground">
-          <Shield className="h-5 w-5" />
-          <div className="flex-1">
-            <p className="text-sm font-medium">File Signing Not Available</p>
-            <p className="text-xs">
-              {!keyInfo.hasKeyPair
-                ? 'Generate signature keys in Settings to enable file signing.'
-                : 'Enable master key wrapping in Settings to sign files.'}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (

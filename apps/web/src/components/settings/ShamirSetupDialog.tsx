@@ -659,7 +659,7 @@ export function ShamirSetupDialog({
                             </AlertDescription>
                         </Alert>
 
-                        <div className="space-y-4 max-h-96 overflow-y-auto">
+                        <div className="space-y-4">
                             {externalShares.map((share) => (
                                 <div
                                     key={share.index}
@@ -698,10 +698,12 @@ export function ShamirSetupDialog({
                                             </Button>
                                         </div>
                                     </div>
-                                    <div className="flex justify-center bg-white p-4 rounded-lg">
+                                    <div className="flex justify-center bg-muted p-4 rounded-lg">
                                         <QRCodeSVG
                                             value={share.qrData}
                                             size={192}
+                                            bgColor="transparent"
+                                            fgColor="currentColor"
                                         />
                                     </div>
                                     <code className="block text-xs bg-muted p-2 rounded overflow-x-auto">

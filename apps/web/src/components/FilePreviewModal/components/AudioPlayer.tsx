@@ -5,7 +5,7 @@
  */
 
 import { forwardRef } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Music } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatTime } from '../utils/formatTime';
 import type { MediaState } from '../types';
@@ -54,7 +54,7 @@ export const AudioPlayer = forwardRef<HTMLAudioElement, AudioPlayerProps>(
 
                 {/* Audio visualization icon */}
                 <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-primary to-primary/50 flex items-center justify-center">
-                    <div className="text-3xl md:text-4xl">🎵</div>
+                    <Music className="w-8 h-8 md:w-10 md:h-10 text-primary-foreground" />
                 </div>
 
                 {error ? (

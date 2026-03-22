@@ -165,10 +165,10 @@ export default function Settings() {
             onValueChange={handleTabChange}
             className="space-y-6"
           >
-            <TabsList className="flex w-full gap-1 overflow-x-auto bg-secondary/50 p-1 rounded-xl">
+            <TabsList className="flex w-full gap-1 overflow-x-auto bg-secondary/50 p-1 rounded-xl scrollbar-none">
               <TabsTrigger
                 value="profile"
-                className="flex-1 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
+                className="shrink-0 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
               >
                 <User className="w-4 h-4" />
                 <span className="hidden sm:inline">Profile</span>
@@ -176,7 +176,7 @@ export default function Settings() {
               {showSubscriptionTab && (
                 <TabsTrigger
                   value="subscription"
-                  className="flex-1 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
+                  className="shrink-0 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
                 >
                   <CreditCard className="w-4 h-4" />
                   <span className="hidden sm:inline">Plan</span>
@@ -184,42 +184,42 @@ export default function Settings() {
               )}
               <TabsTrigger
                 value="security"
-                className="flex-1 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
+                className="shrink-0 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
               >
                 <ShieldCheck className="w-4 h-4" />
                 <span className="hidden sm:inline">Security</span>
               </TabsTrigger>
               <TabsTrigger
                 value="interface"
-                className="flex-1 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
+                className="shrink-0 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
               >
                 <Monitor className="w-4 h-4" />
                 <span className="hidden sm:inline">Interface</span>
               </TabsTrigger>
               <TabsTrigger
                 value="storage"
-                className="flex-1 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
+                className="shrink-0 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
               >
                 <HardDrive className="w-4 h-4" />
                 <span className="hidden sm:inline">Storage</span>
               </TabsTrigger>
               <TabsTrigger
                 value="system"
-                className="flex-1 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
+                className="shrink-0 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
               >
                 <Activity className="w-4 h-4" />
                 <span className="hidden sm:inline">System</span>
               </TabsTrigger>
               <TabsTrigger
                 value="devices"
-                className="flex-1 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
+                className="shrink-0 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
               >
                 <Smartphone className="w-4 h-4" />
                 <span className="hidden sm:inline">Devices</span>
               </TabsTrigger>
               <TabsTrigger
                 value="organizations"
-                className="flex-1 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
+                className="shrink-0 gap-2 px-3 data-[state=active]:bg-card data-[state=active]:shadow-sm rounded-lg"
               >
                 <Building2 className="w-4 h-4" />
                 <span className="hidden sm:inline">Orgs</span>

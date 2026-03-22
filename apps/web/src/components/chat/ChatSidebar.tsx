@@ -22,7 +22,6 @@ import {
     X,
     UserPlus,
     Circle,
-    Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -89,12 +88,9 @@ export function ChatSidebar({
             <div className="relative z-10 p-4 space-y-4">
                 {/* Title bar */}
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-xl font-display font-semibold bg-clip-text text-transparent bg-gradient-to-r from-primary/80 to-primary">
-                            Messages
-                        </h1>
-                        <Sparkles className="h-4 w-4 text-primary opacity-60" />
-                    </div>
+                    <h1 className="text-xl font-sans font-semibold text-foreground">
+                        Messages
+                    </h1>
 
                     <div className="flex items-center gap-1">
                         <Button
@@ -308,7 +304,9 @@ interface ConversationItemProps {
 }
 
 function ConversationItem({ connection, isSelected, isOnline, onClick }: ConversationItemProps) {
-    const userName = connection.nickname || connection.connectedUser?.name || connection.connectedUser?.email || "Unknown";
+    const rawName = connection.nickname || connection.connectedUser?.name || connection.connectedUser?.email || "Unknown";
+    // Capitalize each word (handles names stored lowercase in DB)
+    const userName = rawName.includes("@") ? rawName : rawName.replace(/\b\w/g, c => c.toUpperCase());
     const initials = userName
         .split(" ")
         .map((n: string) => n[0])
@@ -328,18 +326,22 @@ function ConversationItem({ connection, isSelected, isOnline, onClick }: Convers
     // Determine last message preview
     let lastMessagePreview = "No messages";
     if (lastMessage) {
-        if (lastMessage.messageType === "text" && lastMessage.content) {
+        const isEncrypted = (lastMessage as any).isEncrypted;
+        if (isEncrypted) {
+            lastMessagePreview = "Encrypted message";
+        } else if (lastMessage.messageType === "text" && lastMessage.content) {
             lastMessagePreview = lastMessage.content.length > 35
                 ? lastMessage.content.slice(0, 35) + "..."
                 : lastMessage.content;
         } else {
-            const typeLabels = {
+            const typeLabels: Record<string, string> = {
                 file: "File",
                 image: "Image",
                 video: "Video",
+                vault_file: "Shared file",
                 text: lastMessage.content || "Message",
             };
-            lastMessagePreview = typeLabels[lastMessage.messageType];
+            lastMessagePreview = typeLabels[lastMessage.messageType] || "Message";
         }
     }
 

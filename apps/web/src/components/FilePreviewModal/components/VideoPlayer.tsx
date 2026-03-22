@@ -5,7 +5,7 @@
  */
 
 import { forwardRef, RefObject } from 'react';
-import { Play, Pause, Minimize2, Download } from 'lucide-react';
+import { Play, Pause, Minimize2, Download, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
@@ -104,7 +104,7 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
                 {/* Error Overlay */}
                 {error && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-4">
-                        <div className="text-red-500 text-6xl">[WARN]</div>
+                        <AlertTriangle className="w-12 h-12 text-red-500" />
                         <p className="text-white text-lg font-medium text-center max-w-md px-4">{error}</p>
                         {filename && <p className="text-white/50 text-sm">{filename}</p>}
                         {mimeType && mimeType !== 'application/octet-stream' && (

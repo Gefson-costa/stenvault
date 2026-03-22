@@ -64,7 +64,7 @@ export function MobileSettings() {
                         margin: 0,
                     }}
                 >
-                    StenVault v2.0.0 • Made with ❤️
+                    StenVault v2.0.0
                 </p>
             </div>
 

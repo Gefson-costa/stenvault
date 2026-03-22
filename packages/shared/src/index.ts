@@ -22,6 +22,9 @@ export * from "./utils/recoveryCode";
 // Platform abstraction layer (crypto, storage, haptics)
 export * from "./platform";
 
+// Storage abstraction layer
+export * from "./storage";
+
 // Core business logic (transfer, streaming)
 export * from "./core";
 

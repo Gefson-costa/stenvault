@@ -26,6 +26,7 @@ import { trpc } from "@/lib/trpc";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useE2ECrypto } from "@/hooks/useE2ECrypto";
 import { useMasterKey } from "@/hooks/useMasterKey";
+import { useChatChannel } from "@/hooks/useChatChannel";
 import { useCryptoStore } from "@/stores/cryptoStore";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -92,8 +93,13 @@ export function MobileChatConversation({ userId, onBack }: MobileChatConversatio
     const { theme } = useTheme();
     const { user } = useAuth();
     const { cacheHybridPublicKey, getCachedHybridPublicKey } = useCryptoStore();
-    const { encryptMessage } = useE2ECrypto();
+    const { encryptMessage, encryptChannelMessage } = useE2ECrypto();
     const { isUnlocked, isConfigured } = useMasterKey();
+    const {
+        channelSecret,
+        channelKeyVersion,
+        initiateChannel,
+    } = useChatChannel(userId);
     const {
         sendMessage: sendWsMessage,
         sendTyping,
@@ -111,9 +117,6 @@ export function MobileChatConversation({ userId, onBack }: MobileChatConversatio
     // Refs
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    // Cache plaintext of sent messages (encrypted for recipient, sender can't decrypt)
-    const sentPlaintextCache = useRef<Map<number, string>>(new Map());
-    const pendingPlaintext = useRef("");
 
     // State for messages
     const [localMessages, setLocalMessages] = useState<Message[]>([]);
@@ -132,27 +135,15 @@ export function MobileChatConversation({ userId, onBack }: MobileChatConversatio
     );
 
     // Sync messages from tRPC to local state
-    // Merges cached plaintexts for own sent messages (encrypted for recipient, not sender)
     useEffect(() => {
         if (messagesData?.messages) {
-            const transformedMessages = messagesData.messages.map(msg => {
-                const cachedPlaintext = sentPlaintextCache.current.get(msg.id);
-                if (cachedPlaintext && msg.fromUserId === user?.id) {
-                    return {
-                        ...msg,
-                        createdAt: new Date(msg.createdAt),
-                        content: cachedPlaintext,
-                        isEncrypted: false,
-                    };
-                }
-                return {
-                    ...msg,
-                    createdAt: new Date(msg.createdAt),
-                };
-            }) as unknown as Message[];
+            const transformedMessages = messagesData.messages.map(msg => ({
+                ...msg,
+                createdAt: new Date(msg.createdAt),
+            })) as unknown as Message[];
             setLocalMessages(transformedMessages);
         }
-    }, [messagesData, user?.id]);
+    }, [messagesData]);
 
     const messages = localMessages;
 
@@ -231,16 +222,10 @@ export function MobileChatConversation({ userId, onBack }: MobileChatConversatio
     // Send message mutation via tRPC
     const sendMessageMutation = trpc.chat.sendMessage.useMutation({
         onSuccess: (data, variables) => {
-            const messageId = data.messageId;
-            // Cache plaintext for this message (sender can't decrypt their own messages)
-            if (pendingPlaintext.current) {
-                sentPlaintextCache.current.set(messageId, pendingPlaintext.current);
-            }
-
             // Send via WebSocket for real-time delivery
             sendWsMessage({
                 toUserId: userId,
-                messageId,
+                messageId: data.messageId,
                 content: variables.content || "",
                 messageType: variables.messageType || "text",
                 isEncrypted: variables.isEncrypted ?? false,
@@ -272,20 +257,47 @@ export function MobileChatConversation({ userId, onBack }: MobileChatConversatio
         setIsSending(true);
 
         try {
-            const cachedKey = getCachedHybridPublicKey(userId);
-            if (!cachedKey) {
-                toast.error("Recipient's encryption key not available.");
-                setIsSending(false);
-                return;
-            }
             if (!isUnlocked) {
                 toast.error("Vault must be unlocked to send encrypted messages.");
                 setIsSending(false);
                 return;
             }
 
-            // Cache plaintext before encryption (sender can't decrypt their own messages)
-            pendingPlaintext.current = message.trim();
+            const trimmed = message.trim();
+
+            // SVCP: use channel secret if available, auto-initiate if needed
+            let activeChannelSecret = channelSecret;
+
+            if (!activeChannelSecret) {
+                activeChannelSecret = await initiateChannel();
+            }
+
+            if (activeChannelSecret) {
+                // SVCP path: encrypt with channel secret (both sender + recipient can decrypt)
+                const { ciphertext, iv, salt } = await encryptChannelMessage(
+                    trimmed,
+                    activeChannelSecret
+                );
+
+                sendMessageMutation.mutate({
+                    toUserId: userId,
+                    messageType: "text",
+                    content: ciphertext,
+                    iv,
+                    salt,
+                    isEncrypted: true,
+                    keyVersion: channelKeyVersion,
+                });
+                return;
+            }
+
+            // Fallback: legacy per-message KEM
+            const cachedKey = getCachedHybridPublicKey(userId);
+            if (!cachedKey) {
+                toast.error("Recipient's encryption key not available.");
+                setIsSending(false);
+                return;
+            }
 
             const recipientHybridPubKey = deserializeHybridPublicKey({
                 classical: cachedKey.x25519PublicKey,
@@ -294,7 +306,7 @@ export function MobileChatConversation({ userId, onBack }: MobileChatConversatio
             } as HybridPublicKeySerialized);
 
             const { ciphertext, iv, salt, kemCiphertext } = await encryptMessage(
-                message.trim(),
+                trimmed,
                 recipientHybridPubKey
             );
 
@@ -468,7 +480,7 @@ export function MobileChatConversation({ userId, onBack }: MobileChatConversatio
                                 key={msg.id}
                                 message={msg}
                                 isOwn={msg.fromUserId === user?.id}
-                                sentPlaintext={msg.fromUserId === user?.id ? sentPlaintextCache.current.get(msg.id) : undefined}
+                                channelSecret={channelSecret}
                             />
                         ))}
                     </div>
@@ -616,34 +628,63 @@ function ChatHeader({ name, isOnline, onBack }: ChatHeaderProps) {
 // MESSAGE BUBBLE WITH DECRYPTION
 // ─────────────────────────────────────────────────────────────
 
-function MessageBubble({ message, isOwn, sentPlaintext }: MessageBubbleProps) {
+function MessageBubble({ message, isOwn, channelSecret }: MessageBubbleProps) {
     const { theme } = useTheme();
     const [decryptedContent, setDecryptedContent] = useState<string | null>(null);
     const [isDecrypting, setIsDecrypting] = useState(false);
     const [decryptError, setDecryptError] = useState(false);
-    const { decryptMessage } = useE2ECrypto();
+    const { decryptMessage, decryptChannelMessage } = useE2ECrypto();
     const { getUnlockedHybridSecretKey, isUnlocked } = useMasterKey();
 
-    // Decrypt encrypted messages using hybrid KEM
-    // NOTE: Only RECEIVED messages can be decrypted. Own sent messages are
-    // encrypted for the recipient's key, so the sender cannot decrypt them.
+    // Auto-decrypt encrypted messages
+    // SVCP: messages without kemCiphertext use channel secret (both sender + recipient)
+    // Legacy: messages with kemCiphertext use per-message KEM (recipient only)
     useEffect(() => {
-        async function decrypt() {
-            if (
-                message.isEncrypted &&
-                message.content &&
-                message.iv &&
-                message.salt &&
-                message.kemCiphertext
-            ) {
-                // Own messages are encrypted for the recipient — cannot decrypt with our key
-                if (isOwn) {
-                    setDecryptedContent(sentPlaintext ?? message.content);
-                    return;
-                }
+        if (!message.isEncrypted) {
+            setDecryptedContent(message.content ?? null);
+            return;
+        }
 
-                setIsDecrypting(true);
-                setDecryptError(false);
+        if (!message.content || !message.iv || !message.salt) {
+            setDecryptedContent(message.content ?? null);
+            return;
+        }
+
+        // SVCP path: no kemCiphertext → use channel secret
+        if (!message.kemCiphertext && channelSecret) {
+            setIsDecrypting(true);
+            setDecryptError(false);
+            (async () => {
+                try {
+                    const plain = await decryptChannelMessage(
+                        message.content!,
+                        message.iv!,
+                        message.salt!,
+                        channelSecret
+                    );
+                    setDecryptedContent(plain);
+                } catch (err) {
+                    console.warn("[SVCP] Decrypt failed:", err);
+                    setDecryptError(true);
+                } finally {
+                    setIsDecrypting(false);
+                }
+            })();
+            return;
+        }
+
+        // SVCP message but channel not ready yet
+        if (!message.kemCiphertext && !channelSecret) {
+            setDecryptedContent(isUnlocked ? null : null);
+            setDecryptError(!isUnlocked);
+            return;
+        }
+
+        // Legacy: per-message KEM (only recipient can decrypt)
+        if (message.kemCiphertext && !isOwn) {
+            setIsDecrypting(true);
+            setDecryptError(false);
+            (async () => {
                 try {
                     const hybridSecretKey = await getUnlockedHybridSecretKey();
                     if (!hybridSecretKey) {
@@ -651,10 +692,10 @@ function MessageBubble({ message, isOwn, sentPlaintext }: MessageBubbleProps) {
                         return;
                     }
                     const plaintext = await decryptMessage(
-                        message.content,
-                        message.iv,
-                        message.salt,
-                        message.kemCiphertext,
+                        message.content!,
+                        message.iv!,
+                        message.salt!,
+                        message.kemCiphertext!,
                         hybridSecretKey
                     );
                     setDecryptedContent(plaintext);
@@ -664,26 +705,28 @@ function MessageBubble({ message, isOwn, sentPlaintext }: MessageBubbleProps) {
                 } finally {
                     setIsDecrypting(false);
                 }
-            }
+            })();
+            return;
         }
-        decrypt();
-    }, [message, isOwn, sentPlaintext, decryptMessage, getUnlockedHybridSecretKey, isUnlocked]);
+
+        // Legacy own message with KEM: can't decrypt
+        if (message.kemCiphertext && isOwn) {
+            setDecryptedContent(null);
+            setDecryptError(true);
+        }
+    }, [message, isOwn, channelSecret, decryptMessage, decryptChannelMessage,
+        getUnlockedHybridSecretKey, isUnlocked]);
 
     // Determine what content to display
     let displayContent: string;
-    if (message.isEncrypted) {
-        if (isOwn) {
-            // Own encrypted messages - use cached plaintext or show indicator
-            displayContent = sentPlaintext || message.content || "Sent message";
-        } else if (isDecrypting) {
-            displayContent = "Decrypting...";
-        } else if (decryptError) {
-            displayContent = "[LOCK] Could not decrypt";
-        } else if (decryptedContent) {
-            displayContent = decryptedContent;
-        } else {
-            displayContent = "[LOCK] Encrypted";
-        }
+    if (isDecrypting) {
+        displayContent = "Decrypting...";
+    } else if (decryptError) {
+        displayContent = "Could not decrypt";
+    } else if (decryptedContent) {
+        displayContent = decryptedContent;
+    } else if (message.isEncrypted) {
+        displayContent = "Encrypted";
     } else {
         displayContent = message.content || "";
     }

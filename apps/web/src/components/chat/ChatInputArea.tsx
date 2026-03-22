@@ -177,7 +177,7 @@ export function ChatInputArea({
     const canSendFile = recipientUserId && hasKeys;
 
     return (
-        <div className="relative">
+        <div className="relative overflow-y-auto">
             {/* Upload Progress */}
             <AnimatePresence>
                 {isUploading && uploadProgress > 0 && (
@@ -371,7 +371,7 @@ export function ChatInputArea({
                         placeholder="Type your message..."
                         disabled={isUploading}
                         className={cn(
-                            "flex-1 min-h-[44px] max-h-[200px] resize-none",
+                            "flex-1 min-h-[44px] max-h-[120px] resize-none",
                             "border-0 focus-visible:ring-0 focus-visible:ring-offset-0",
                             "bg-transparent",
                             "text-foreground text-sm",

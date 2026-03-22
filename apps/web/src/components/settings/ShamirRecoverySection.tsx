@@ -96,10 +96,10 @@ export function ShamirRecoverySection() {
                 } shadow-sm`}
             >
                 <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
                             <div
-                                className={`p-2 rounded-lg ${
+                                className={`p-2 rounded-lg shrink-0 ${
                                     isConfigured
                                         ? "bg-purple-100 dark:bg-purple-900"
                                         : "bg-gray-100 dark:bg-gray-800"
@@ -111,7 +111,7 @@ export function ShamirRecoverySection() {
                                     <Shield className="w-6 h-6 text-gray-600 dark:text-gray-400" />
                                 )}
                             </div>
-                            <div>
+                            <div className="min-w-0">
                                 <CardTitle>
                                     Social Recovery
                                 </CardTitle>
@@ -123,7 +123,7 @@ export function ShamirRecoverySection() {
                             </div>
                         </div>
                         {isConfigured ? (
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                                 <Button
                                     variant="outline"
                                     size="sm"

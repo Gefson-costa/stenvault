@@ -115,6 +115,7 @@ const BottomSheetContent = React.forwardRef<
           "bg-card/95 backdrop-blur-xl",
           "border border-border",
           "shadow-2xl shadow-black/20",
+          "flex flex-col overflow-hidden",
           // Mobile: bottom sheet from bottom
           isMobile && [
             "bottom-0 left-0 right-0",
@@ -159,10 +160,8 @@ const BottomSheetContent = React.forwardRef<
           </div>
         )}
 
-        {/* Scrollable content */}
-        <div className="overflow-y-auto max-h-full">
-          {children}
-        </div>
+        {/* Content — each child (Header, Body, Footer) manages its own scroll */}
+        {children}
 
         {/* Close button */}
         {showCloseButton && (
@@ -198,7 +197,7 @@ const BottomSheetHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col gap-2 p-6 pb-4",
+      "flex flex-col gap-2 p-6 pb-4 shrink-0",
       className
     )}
     {...props}
@@ -252,7 +251,7 @@ const BottomSheetBody = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("px-6 pb-6", className)} {...props} />
+  <div className={cn("px-6 pb-6 overflow-y-auto flex-1 min-h-0", className)} {...props} />
 );
 
 BottomSheetBody.displayName = "BottomSheetBody";
@@ -267,7 +266,7 @@ const BottomSheetFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse gap-2 px-6 pb-6",
+      "flex flex-col-reverse gap-2 px-6 pb-6 shrink-0",
       "sm:flex-row sm:justify-end",
       className
     )}

@@ -53,7 +53,7 @@ export function DesktopView({ isEnabled, sessions, pendingTransfers, stats, isLo
                 </div>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     <StatsCard
                         title="Total Transfers"
                         value={stats.total}
@@ -81,9 +81,9 @@ export function DesktopView({ isEnabled, sessions, pendingTransfers, stats, isLo
                 </div>
 
                 {/* Main Content */}
-                <div className="grid grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Active Transfers - 2 columns */}
-                    <div className="col-span-2">
+                    <div className="lg:col-span-2">
                         <Card className="bg-card/50 backdrop-blur-sm border-border/50">
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">

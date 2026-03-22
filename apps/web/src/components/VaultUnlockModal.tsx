@@ -124,7 +124,7 @@ export function VaultUnlockModal({
                     <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/10">
                         <Shield className="h-7 w-7 text-amber-500" />
                     </div>
-                    <DialogTitle className="text-xl">Unlock Your Vault</DialogTitle>
+                    <DialogTitle className="text-xl font-sans">Unlock Your Vault</DialogTitle>
                     <DialogDescription className="text-sm text-muted-foreground">
                         Enter your Encryption Password to access your encrypted files.
                         Your password never leaves this device.
@@ -177,13 +177,11 @@ export function VaultUnlockModal({
                         </div>
                     )}
 
-                    {/* Password Hint */}
-                    {config?.isConfigured && (
+                    {/* Password Hint — only shown after a failed attempt */}
+                    {error && config?.passwordHint && (
                         <p className="text-xs text-muted-foreground">
                             <KeyRound className="inline h-3 w-3 mr-1" />
-                            {config.passwordHint
-                                ? <>Hint: {config.passwordHint}</>
-                                : 'Enter your encryption password to unlock your vault'}
+                            Hint: {config.passwordHint}
                         </p>
                     )}
 
@@ -231,13 +229,6 @@ export function VaultUnlockModal({
                     )}
                 </div>
 
-                {/* Security Notice */}
-                <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-                    <p>
-                        <strong>[LOCK] Zero-Knowledge:</strong> Your Encryption Password is used only on
-                        this device to derive encryption keys. It is never sent to our servers.
-                    </p>
-                </div>
             </DialogContent>
         </Dialog>
     );

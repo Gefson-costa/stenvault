@@ -200,7 +200,7 @@ export function RecoveryCodesSection() {
                         <p className="text-sm text-muted-foreground">
                             {remainingCodes < 3 ? (
                                 <span className="text-red-600 dark:text-red-400 font-medium">
-                                    [WARN] Low on recovery codes. Consider regenerating before you run out.
+                                    Low on recovery codes. Consider regenerating before you run out.
                                 </span>
                             ) : (
                                 'You can regenerate all codes at any time. Old codes will stop working.'

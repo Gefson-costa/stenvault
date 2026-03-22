@@ -34,7 +34,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LogOut, PanelLeft, Home, Settings, Sparkles, HardDrive, Share2, Shield, MessageCircle, Network, Trash2, Star, Send } from "lucide-react";
+import { LogOut, PanelLeft, Home, Settings, HardDrive, Share2, Shield, MessageCircle, Network, Trash2, Star, Send } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "./ui/button";
@@ -57,26 +57,20 @@ import { formatBytes } from "@stenvault/shared";
 
 // Menu items configuration
 // Note: Some items are conditionally shown based on feature flags
-// Menu items grouped by function — separators rendered between groups
+// Two groups: primary (core) and secondary (everything else)
 const menuGroups = [
-  // Core navigation
+  // Primary — core navigation
   [
     { icon: Home, label: "Home", path: "/home" },
     { icon: HardDrive, label: "Drive", path: "/drive" },
     { icon: Star, label: "Favorites", path: "/favorites" },
   ],
-  // Collaboration (Quantum Mesh injected dynamically)
+  // Secondary — collaboration & utility (Quantum Mesh injected dynamically)
   [
     { icon: Share2, label: "Shares", path: "/shares" },
     { icon: MessageCircle, label: "Private Chat", path: "/chat" },
-  ],
-  // System
-  [
     { icon: Trash2, label: "Trash", path: "/trash" },
     { icon: Send, label: "Sent", path: "/sends" },
-  ],
-  // Settings (always last)
-  [
     { icon: Settings, label: "Settings", path: "/settings" },
   ],
 ];
@@ -377,9 +371,8 @@ function DesktopLayoutContent({
               </button>
               {!isCollapsed ? (
                 <div className="flex items-center gap-2.5 min-w-0">
-                  {/* Premium logo container with gold glow */}
                   <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-[var(--gold-500)] to-[var(--gold-600)] flex items-center justify-center shadow-[0_0_20px_rgba(212,175,55,0.25)]">
-                    <Sparkles className="h-3.5 w-3.5 text-[var(--nocturne-950)]" />
+                    <Shield className="h-3.5 w-3.5 text-[var(--nocturne-950)]" />
                   </div>
                   {/* Premium gradient text */}
                   <span className="font-display font-semibold tracking-tight text-lg truncate bg-clip-text text-transparent bg-gradient-to-r from-[var(--gold-300)] via-[var(--gold-400)] to-[var(--gold-500)]">
@@ -390,41 +383,48 @@ function DesktopLayoutContent({
             </div>
           </SidebarHeader>
 
-          <SidebarContent className="gap-1 px-3 py-4">
+          <SidebarContent className="gap-0 px-3 py-2">
             <SidebarMenu>
-              {resolvedGroups.map((group, groupIndex) => (
+              {resolvedGroups.map((group, groupIndex) => {
+                const isSecondary = groupIndex > 0;
+                return (
                 <div key={groupIndex}>
                   {/* Gold separator between groups */}
                   {groupIndex > 0 && (
-                    <div className="my-2 px-2">
+                    <div className="my-1.5 px-2">
                       <div className="h-px bg-gradient-to-r from-transparent via-[rgba(212,175,55,0.15)] to-transparent" />
                     </div>
                   )}
                   {group.map(item => {
                     const isActive = location === item.path;
                     return (
-                      <SidebarMenuItem key={item.path} className="mb-1">
+                      <SidebarMenuItem key={item.path} className="mb-0.5">
                         <div className="relative">
                           <SidebarMenuButton
                             isActive={isActive}
                             onClick={() => setLocation(item.path)}
                             tooltip={item.label}
                             className={cn(
-                              "h-10 transition-all duration-200 font-medium rounded-lg relative z-20 overflow-hidden",
+                              "transition-all duration-200 font-medium rounded-lg relative z-20 overflow-hidden",
+                              isSecondary ? "h-9" : "h-10",
                               isActive
                                 ? "hover:bg-transparent"
-                                : "text-[var(--nocturne-300)] hover:text-[var(--gold-300)] hover:bg-[rgba(212,175,55,0.08)]"
+                                : isSecondary
+                                  ? "text-[var(--nocturne-400)] hover:text-[var(--gold-300)] hover:bg-[rgba(212,175,55,0.08)]"
+                                  : "text-[var(--nocturne-300)] hover:text-[var(--gold-300)] hover:bg-[rgba(212,175,55,0.08)]"
                             )}
                           >
                             <item.icon
                               aria-hidden="true"
                               className={cn(
-                                "h-4 w-4 transition-colors duration-200 z-20 relative",
-                                isActive ? "text-[var(--gold-400)]" : "text-[var(--nocturne-400)]"
+                                "transition-colors duration-200 z-20 relative",
+                                isSecondary ? "h-3.5 w-3.5" : "h-4 w-4",
+                                isActive ? "text-[var(--gold-400)]" : isSecondary ? "text-[var(--nocturne-500)]" : "text-[var(--nocturne-400)]"
                               )}
                             />
                             <span className={cn(
                               "z-20 relative transition-colors duration-200",
+                              isSecondary && "text-[0.8125rem]",
                               isActive ? "text-[var(--gold-300)]" : ""
                             )}>
                               {item.label}
@@ -456,7 +456,8 @@ function DesktopLayoutContent({
                     );
                   })}
                 </div>
-              ))}
+                );
+              })}
 
               {/* Premium Admin Panel Link */}
               {user?.role === "admin" && (
@@ -582,7 +583,7 @@ function DesktopLayoutContent({
         />
       </div>
 
-      <SidebarInset>
+      <SidebarInset className="min-h-0 overflow-hidden">
         {/* Email Verification Banner */}
         <EmailVerificationNotice user={user} />
         {/* Subscription Status Banner */}
@@ -590,7 +591,7 @@ function DesktopLayoutContent({
         {/* Recovery Request Banner for Trusted Contacts */}
         <RecoveryRequestBanner />
 
-        <main className="flex-1 p-4">{children}</main>
+        <main className="flex-1 p-4 min-h-0 overflow-auto relative">{children}</main>
       </SidebarInset>
 
       {/* Vault Unlock Modal (Phase 1.1 NEW_DAY) */}

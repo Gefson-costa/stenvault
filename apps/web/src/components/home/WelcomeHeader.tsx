@@ -14,7 +14,7 @@
  */
 
 import { motion } from 'framer-motion';
-import { Sun, Moon, Sunrise, Sunset, Sparkles, Cloud } from 'lucide-react';
+import { Sun, Moon, Sunrise, Sunset } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -91,49 +91,6 @@ export function WelcomeHeader({ userName, className }: WelcomeHeaderProps) {
                     'pointer-events-none'
                 )}
             />
-
-            {/* Theme-aware glow effect */}
-            <div
-                className="absolute -top-20 -right-20 w-40 h-40 rounded-full blur-3xl opacity-30 pointer-events-none"
-                style={{ backgroundColor: theme.brand.primary }}
-            />
-            <div
-                className="absolute -bottom-10 -left-10 w-32 h-32 rounded-full blur-3xl opacity-20 pointer-events-none"
-                style={{ backgroundColor: theme.brand.accent }}
-            />
-
-            {/* Animated sparkles */}
-            <motion.div
-                className="absolute top-4 right-4 opacity-40"
-                style={{ color: theme.brand.primary }}
-                animate={{
-                    rotate: [0, 15, -15, 0],
-                    scale: [1, 1.15, 1],
-                }}
-                transition={{
-                    duration: 4,
-                    repeat: Infinity,
-                    ease: 'easeInOut',
-                }}
-            >
-                <Sparkles className="h-6 w-6" />
-            </motion.div>
-
-            {/* Cloud decoration (subtle) */}
-            <motion.div
-                className="absolute top-8 right-20 text-foreground/5"
-                animate={{
-                    x: [0, 10, 0],
-                    opacity: [0.05, 0.1, 0.05],
-                }}
-                transition={{
-                    duration: 8,
-                    repeat: Infinity,
-                    ease: 'easeInOut',
-                }}
-            >
-                <Cloud className="h-8 w-8" />
-            </motion.div>
 
             {/* Content */}
             <div className="relative flex items-start gap-4">

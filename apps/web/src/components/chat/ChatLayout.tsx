@@ -67,6 +67,8 @@ export function ChatLayout() {
         name: conn.connectedUserName,
         email: conn.connectedUserEmail,
       } : undefined,
+      lastMessage: conn.lastMessage ?? undefined,
+      unreadCount: conn.unreadCount ?? 0,
     })), [connectionsData?.connections]);
 
   // Refetch connections function

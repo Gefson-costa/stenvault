@@ -109,7 +109,7 @@ export function EditLimitsDialog({
                                 When enabled, Stripe will not overwrite these quotas when the subscription changes.
                                 {selectedUser?.subscriptionPlan && selectedUser.subscriptionPlan !== "free" && (
                                     <span className="block mt-1 text-amber-600 dark:text-amber-400">
-                                        [WARN] This user has an active {selectedUser.subscriptionPlan.toUpperCase()} plan.
+                                        This user has an active {selectedUser.subscriptionPlan.toUpperCase()} plan.
                                     </span>
                                 )}
                             </p>
@@ -251,7 +251,7 @@ export function ChangeRoleDialog({
                     {selectedPlan === "admin" && (
                         <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
                             <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                                [WARN] Admin users have full access to the system including user management and settings.
+                                Admin users have full access to the system including user management and settings.
                             </p>
                         </div>
                     )}

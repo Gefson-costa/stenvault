@@ -31,7 +31,8 @@ export interface Connection {
         fromUserId: number;
         toUserId: number;
         content: string | null;
-        messageType: "text" | "file" | "image" | "video";
+        messageType: "text" | "file" | "image" | "video" | "vault_file";
+        isEncrypted?: boolean;
         createdAt: Date;
     } | null;
     unreadCount?: number;
@@ -133,8 +134,8 @@ export interface ChatHeaderProps {
 export interface MessageBubbleProps {
     message: Message;
     isOwn: boolean;
-    /** Cached plaintext for own sent messages (encrypted for recipient, not sender) */
-    sentPlaintext?: string;
+    /** SVCP channel secret for decryption (both sender + recipient use the same key) */
+    channelSecret?: CryptoKey | null;
 }
 
 export interface MessageInputProps {

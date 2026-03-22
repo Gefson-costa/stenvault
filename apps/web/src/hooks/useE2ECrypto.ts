@@ -26,6 +26,8 @@ import type {
 
 // ===== CONSTANTS =====
 const CHAT_HKDF_INFO = "chat-hybrid-v1";
+const SVCP_MSG_INFO = "svcp-msg-v1";
+const SVCP_CHANNEL_INFO = "svcp-v1";
 const AES_KEY_LENGTH = 256;
 const IV_LENGTH = 12;
 const SALT_LENGTH = 32;
@@ -167,11 +169,100 @@ export function useE2ECrypto() {
         []
     );
 
+    /**
+     * Encrypt a message using a pre-established SVCP channel secret
+     *
+     * Flow:
+     * 1. Random 32-byte salt
+     * 2. HKDF(channelSecret, salt, "svcp-msg-v1") → per-message AES key
+     * 3. AES-256-GCM encrypt → {ciphertext, iv, salt}
+     *
+     * No KEM ciphertext needed — both parties share the channel secret.
+     */
+    const encryptChannelMessage = useCallback(
+        async (
+            message: string,
+            channelSecret: CryptoKey
+        ): Promise<{ ciphertext: string; iv: string; salt: string }> => {
+            // Export channel secret raw bytes for HKDF
+            const secretBytes = new Uint8Array(
+                await crypto.subtle.exportKey("raw", channelSecret)
+            );
+
+            const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+            const msgKey = await deriveAESKeyFromSharedSecret(
+                secretBytes, salt, SVCP_MSG_INFO
+            );
+
+            const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+            const encoded = new TextEncoder().encode(message);
+            const encrypted = await crypto.subtle.encrypt(
+                { name: "AES-GCM", iv },
+                msgKey,
+                encoded.buffer as ArrayBuffer
+            );
+
+            return {
+                ciphertext: arrayBufferToBase64(encrypted),
+                iv: arrayBufferToBase64(iv.buffer as ArrayBuffer),
+                salt: arrayBufferToBase64(salt.buffer as ArrayBuffer),
+            };
+        },
+        []
+    );
+
+    /**
+     * Decrypt a message using a pre-established SVCP channel secret
+     *
+     * Both sender and recipient use the same path — no isOwn check needed.
+     */
+    const decryptChannelMessage = useCallback(
+        async (
+            ciphertext: string,
+            iv: string,
+            salt: string,
+            channelSecret: CryptoKey
+        ): Promise<string> => {
+            const secretBytes = new Uint8Array(
+                await crypto.subtle.exportKey("raw", channelSecret)
+            );
+
+            const saltBytes = new Uint8Array(base64ToArrayBuffer(salt));
+            const msgKey = await deriveAESKeyFromSharedSecret(
+                secretBytes, saltBytes, SVCP_MSG_INFO
+            );
+
+            const ivBytes = new Uint8Array(base64ToArrayBuffer(iv));
+            if (ivBytes.length !== IV_LENGTH) {
+                throw new Error(`Invalid IV length: expected ${IV_LENGTH}, got ${ivBytes.length}`);
+            }
+
+            const ciphertextBuffer = base64ToArrayBuffer(ciphertext);
+            if (ciphertextBuffer.byteLength === 0) {
+                throw new Error("Empty ciphertext");
+            }
+
+            const decrypted = await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: ivBytes },
+                msgKey,
+                ciphertextBuffer
+            );
+
+            return new TextDecoder().decode(decrypted);
+        },
+        []
+    );
+
     return {
         encryptMessage,
         decryptMessage,
+        encryptChannelMessage,
+        decryptChannelMessage,
     };
 }
 
 // Re-export utilities for backward compatibility
 export { arrayBufferToBase64, base64ToArrayBuffer };
+
+// Export SVCP derivation helper for useChatChannel
+export { deriveAESKeyFromSharedSecret, SVCP_CHANNEL_INFO, SVCP_MSG_INFO };

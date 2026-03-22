@@ -22,8 +22,10 @@ export function Chat() {
     }
 
     // Desktop: Use original ChatLayout
+    // Absolute positioning fills the parent container edge-to-edge,
+    // bypassing the p-4 from DashboardLayout without margin hacks
     return (
-        <div className="h-full">
+        <div className="absolute inset-0 overflow-hidden">
             <ChatLayout />
         </div>
     );

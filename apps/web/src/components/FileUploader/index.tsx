@@ -2,7 +2,7 @@
  * FileUploader Component
  *
  * Main orchestrator component for file uploads.
- * Composes EncryptionPanel, SigningPanel, DropZone, UploadProgress, and EncryptionIndicator.
+ * Composes EncryptionPanel, SigningPanel, DropZone, and UploadProgress.
  *
  * Features:
  * - Drag and drop file uploads
@@ -22,7 +22,6 @@ import { useFolderUpload } from './hooks/useFolderUpload';
 import { getSignByDefault } from '@/components/settings/SignatureKeysSection';
 import { useSignatureKeys } from '@/hooks/useSignatureKeys';
 import { EncryptionPanel } from './components/EncryptionPanel';
-import { EncryptionIndicator } from './components/EncryptionIndicator';
 import { SigningPanel, type SigningState } from './components/SigningPanel';
 import { DropZone } from './components/DropZone';
 import { UploadProgress } from './components/UploadProgress';
@@ -153,7 +152,6 @@ export function FileUploader({
     const {
         uploadFiles,
         isDragging,
-        encryptionState,
         handleFiles,
         handleFilesToFolder,
         removeFile,
@@ -242,9 +240,6 @@ export function FileUploader({
                 onKeysReady={handleSigningKeysReady}
                 onKeysClear={handleSigningKeysClear}
             />
-
-            {/* Encryption Progress Indicator */}
-            <EncryptionIndicator encryptionState={encryptionState} />
 
             {/* Folder Upload Phase Indicator */}
             {isFolderUploading && (

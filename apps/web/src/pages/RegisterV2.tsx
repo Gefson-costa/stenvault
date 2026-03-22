@@ -147,7 +147,7 @@ export default function RegisterV2() {
                         required
                     />
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                         <AuthInput
                             id="password"
                             type="password"
@@ -160,7 +160,7 @@ export default function RegisterV2() {
                         <AuthInput
                             id="confirmPassword"
                             type="password"
-                            label="Confirm Login Password"
+                            label="Confirm Password"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             placeholder="••••••••"

@@ -183,7 +183,7 @@ Never store all shares in the same place!
                 {/* Info */}
                 <div className="text-xs text-muted-foreground p-3 rounded-lg bg-muted/30">
                     <p>
-                        [CRYPTO] Using Shamir's Secret Sharing, your encryption key has been split into{" "}
+                        Using Shamir's Secret Sharing, your encryption key has been split into{" "}
                         <strong>{totalShares} shares</strong>. Any <strong>{threshold}</strong> of
                         these shares can reconstruct the original key.
                     </p>
