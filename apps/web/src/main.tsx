@@ -1,6 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { queryClient } from "@/lib/queryClient";
-import { clearAllTokens } from "@/lib/auth";
+import { clearAllTokens, refreshSession } from "@/lib/auth";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
@@ -56,7 +56,10 @@ export async function refreshCSRFToken(): Promise<void> {
   await getCSRFToken();
 }
 
-const redirectToLoginIfUnauthorized = (error: unknown) => {
+/** Track whether a silent refresh is already in progress */
+let isRefreshingSession = false;
+
+const redirectToLoginIfUnauthorized = async (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
 
@@ -67,6 +70,23 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
     const path = window.location.pathname;
     const publicPrefixes = ['/send', '/s/', '/landing', '/pricing', '/recover', '/p2p/', '/ops-deck', '/terms', '/privacy', '/auth/'];
     if (publicPrefixes.some(p => path === p || path.startsWith(p))) return;
+
+    // Try silent refresh before logging out (access cookie expired but refresh cookie may be valid)
+    if (!isRefreshingSession) {
+      isRefreshingSession = true;
+      try {
+        const refreshed = await refreshSession();
+        if (refreshed) {
+          // Refresh succeeded — new access cookie set by server. Retry failed queries.
+          queryClient.invalidateQueries();
+          return;
+        }
+      } catch {
+        // Refresh failed — fall through to logout
+      } finally {
+        isRefreshingSession = false;
+      }
+    }
 
     clearAllTokens();
     window.location.href = '/auth/login';
