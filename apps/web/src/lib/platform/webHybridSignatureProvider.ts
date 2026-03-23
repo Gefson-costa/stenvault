@@ -43,6 +43,23 @@ import {
   createContextualMessage,
 } from '@stenvault/shared/platform/crypto';
 import { toArrayBuffer } from '@stenvault/shared/platform/crypto';
+import { PQCWorkerClient } from '../pqcWorkerClient';
+
+// ============ Environment Detection ============
+
+/**
+ * Returns true when PQC operations should use liboqs directly (not via PQC Worker).
+ * Direct usage when: already inside a Web Worker, or Worker API unavailable (tests/SSR).
+ * PQC Worker delegation only on main browser thread where Worker API exists.
+ */
+function shouldUseDirectLiboqs(): boolean {
+  // Worker API not available (Node.js / Vitest / SSR) → use liboqs directly
+  if (typeof Worker === 'undefined') return true;
+  // Already inside a Web Worker → already isolated
+  if (typeof window === 'undefined' && typeof self !== 'undefined' && typeof self.postMessage === 'function') return true;
+  // Main browser thread → delegate to PQC Worker
+  return false;
+}
 
 // ============ Dynamic Import Types ============
 
@@ -387,6 +404,12 @@ export class WebHybridSignatureProvider implements HybridSignatureProvider {
     publicKey: Uint8Array;
     secretKey: Uint8Array;
   }> {
+    // Main browser thread → delegate to PQC Worker (WASM memory isolation)
+    if (!shouldUseDirectLiboqs()) {
+      return PQCWorkerClient.getInstance().mldsa65GenerateKeyPair();
+    }
+
+    // Already in worker context → use liboqs directly
     const factory = await getMLDSA65Factory();
     if (!factory) {
       throw new Error(
@@ -419,6 +442,12 @@ export class WebHybridSignatureProvider implements HybridSignatureProvider {
    * Sign message with ML-DSA-65
    */
   private async signMLDSA65(message: Uint8Array, secretKey: Uint8Array): Promise<Uint8Array> {
+    // Main browser thread → delegate to PQC Worker (WASM memory isolation)
+    if (!shouldUseDirectLiboqs()) {
+      return PQCWorkerClient.getInstance().mldsa65Sign(message, secretKey);
+    }
+
+    // Already in worker context → use liboqs directly
     const factory = await getMLDSA65Factory();
     if (!factory) {
       throw new Error(
@@ -450,6 +479,20 @@ export class WebHybridSignatureProvider implements HybridSignatureProvider {
     signature: Uint8Array,
     publicKey: Uint8Array
   ): Promise<boolean> {
+    // Main browser thread → delegate to PQC Worker (WASM memory isolation)
+    if (!shouldUseDirectLiboqs()) {
+      try {
+        return await PQCWorkerClient.getInstance().mldsa65Verify(message, signature, publicKey);
+      } catch (error) {
+        console.warn(
+          '[WebHybridSignatureProvider] ML-DSA-65 worker verification error:',
+          error instanceof Error ? error.message : String(error)
+        );
+        return false;
+      }
+    }
+
+    // Already in worker context → use liboqs directly
     const factory = await getMLDSA65Factory();
     if (!factory) {
       throw new Error(

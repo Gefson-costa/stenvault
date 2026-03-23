@@ -41,6 +41,23 @@ import {
   validateHybridCiphertext,
 } from '@stenvault/shared/platform/crypto';
 import { toArrayBuffer } from '@stenvault/shared/platform/crypto';
+import { PQCWorkerClient } from '../pqcWorkerClient';
+
+// ============ Environment Detection ============
+
+/**
+ * Returns true when PQC operations should use liboqs directly (not via PQC Worker).
+ * Direct usage when: already inside a Web Worker, or Worker API unavailable (tests/SSR).
+ * PQC Worker delegation only on main browser thread where Worker API exists.
+ */
+function shouldUseDirectLiboqs(): boolean {
+  // Worker API not available (Node.js / Vitest / SSR) → use liboqs directly
+  if (typeof Worker === 'undefined') return true;
+  // Already inside a Web Worker (e.g. fileEncryptor.worker) → already isolated
+  if (typeof window === 'undefined' && typeof self !== 'undefined' && typeof self.postMessage === 'function') return true;
+  // Main browser thread → delegate to PQC Worker
+  return false;
+}
 
 // ============ Dynamic Import Types ============
 
@@ -373,6 +390,12 @@ export class WebHybridKemProvider implements HybridKemProvider {
     publicKey: Uint8Array;
     secretKey: Uint8Array;
   }> {
+    // Main browser thread → delegate to PQC Worker (WASM memory isolation)
+    if (!shouldUseDirectLiboqs()) {
+      return PQCWorkerClient.getInstance().mlkem768GenerateKeyPair();
+    }
+
+    // Already in worker context → use liboqs directly (already isolated)
     const factory = await getMLKEM768Factory();
     if (!factory) {
       throw new Error(
@@ -408,6 +431,12 @@ export class WebHybridKemProvider implements HybridKemProvider {
     ciphertext: Uint8Array;
     sharedSecret: Uint8Array;
   }> {
+    // Main browser thread → delegate to PQC Worker (WASM memory isolation)
+    if (!shouldUseDirectLiboqs()) {
+      return PQCWorkerClient.getInstance().mlkem768Encapsulate(publicKey);
+    }
+
+    // Already in worker context → use liboqs directly
     const factory = await getMLKEM768Factory();
     if (!factory) {
       throw new Error(
@@ -443,6 +472,12 @@ export class WebHybridKemProvider implements HybridKemProvider {
     ciphertext: Uint8Array,
     secretKey: Uint8Array
   ): Promise<Uint8Array> {
+    // Main browser thread → delegate to PQC Worker (WASM memory isolation)
+    if (!shouldUseDirectLiboqs()) {
+      return PQCWorkerClient.getInstance().mlkem768Decapsulate(ciphertext, secretKey);
+    }
+
+    // Already in worker context → use liboqs directly
     const factory = await getMLKEM768Factory();
     if (!factory) {
       throw new Error(
