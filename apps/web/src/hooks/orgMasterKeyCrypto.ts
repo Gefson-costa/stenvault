@@ -30,20 +30,12 @@ export type { DerivedFileKeyWithBytes };
  */
 export async function unwrapOMKWithPersonalMK(
   wrappedOMKB64: string,
-  personalMK: CryptoKey
+  personalMK: CryptoKey | { aesKw: CryptoKey }
 ): Promise<CryptoKey> {
   const wrappedKey = base64ToArrayBuffer(wrappedOMKB64);
 
-  // Export personal MK to use as AES-KW key
-  const personalMKBytes = await crypto.subtle.exportKey('raw', personalMK);
-  const kek = await crypto.subtle.importKey(
-    'raw',
-    personalMKBytes,
-    { name: 'AES-KW' },
-    false,
-    ['unwrapKey']
-  );
-  new Uint8Array(personalMKBytes).fill(0);
+  // Use non-extractable AES-KW key from bundle, or legacy CryptoKey
+  const kek = 'aesKw' in personalMK ? personalMK.aesKw : personalMK;
 
   try {
     return await crypto.subtle.unwrapKey(
@@ -52,7 +44,7 @@ export async function unwrapOMKWithPersonalMK(
       kek,
       'AES-KW',
       { name: 'AES-GCM', length: 256 },
-      true, // extractable for HKDF derivation
+      true, // extractable for HKDF derivation (OMK needs export for org key derivation)
       ['wrapKey', 'unwrapKey']
     );
   } catch {
@@ -66,18 +58,9 @@ export async function unwrapOMKWithPersonalMK(
  */
 export async function wrapOMKWithPersonalMK(
   omk: CryptoKey,
-  personalMK: CryptoKey
+  personalMK: CryptoKey | { aesKw: CryptoKey }
 ): Promise<string> {
-  const personalMKBytes = await crypto.subtle.exportKey('raw', personalMK);
-  const kek = await crypto.subtle.importKey(
-    'raw',
-    personalMKBytes,
-    { name: 'AES-KW' },
-    false,
-    ['wrapKey']
-  );
-  new Uint8Array(personalMKBytes).fill(0);
-
+  const kek = 'aesKw' in personalMK ? personalMK.aesKw : personalMK;
   const wrapped = await crypto.subtle.wrapKey('raw', omk, kek, 'AES-KW');
   return arrayBufferToBase64(wrapped);
 }

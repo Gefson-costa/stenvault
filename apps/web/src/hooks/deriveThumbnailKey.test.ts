@@ -9,23 +9,15 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { deriveThumbnailKeyFromMaster } from './useMasterKey';
 
-// Create a test master key using WebCrypto
+// Create a test HKDF key (deriveThumbnailKeyFromMaster now accepts HKDF CryptoKey directly)
 async function createTestMasterKey(seed: Uint8Array): Promise<CryptoKey> {
     return crypto.subtle.importKey(
         'raw',
         seed as BufferSource,
-        { name: 'AES-GCM', length: 256 },
-        true, // extractable so deriveThumbnailKeyFromMaster can export it
-        ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey']
+        'HKDF',
+        false,
+        ['deriveKey', 'deriveBits']
     );
-}
-
-// Export raw key bytes for comparison
-async function exportKey(key: CryptoKey): Promise<Uint8Array> {
-    // Re-import as extractable for testing comparison
-    // deriveThumbnailKeyFromMaster produces non-extractable keys,
-    // so we test behavior rather than raw bytes
-    return new Uint8Array(0);
 }
 
 describe('deriveThumbnailKeyFromMaster', () => {
@@ -178,33 +170,19 @@ describe('deriveThumbnailKeyFromMaster', () => {
         expect(new Uint8Array(decrypted)).toEqual(plaintext);
     });
 
-    it('should zero master key bytes after derivation (security)', async () => {
-        // Create a fresh master key and track its exported bytes
+    it('should accept non-extractable HKDF key (no raw byte export needed)', async () => {
+        // With Fix V1a, deriveThumbnailKeyFromMaster takes HKDF CryptoKey directly
+        // and never calls exportKey on the master key — no raw bytes to zero
         const freshBytes = new Uint8Array(32);
         for (let i = 0; i < 32; i++) freshBytes[i] = i + 100;
         const freshMk = await createTestMasterKey(freshBytes);
 
-        // Spy on exportKey to capture the ArrayBuffer
-        let capturedBuffer: ArrayBuffer | null = null;
-        const originalExportKey = crypto.subtle.exportKey.bind(crypto.subtle);
-        const exportSpy = vi.spyOn(crypto.subtle, 'exportKey').mockImplementation(
-            async (format: string, key: CryptoKey) => {
-                const result = await originalExportKey(format as 'raw', key);
-                if (format === 'raw' && !capturedBuffer) {
-                    capturedBuffer = result;
-                }
-                return result;
-            }
-        );
+        const exportSpy = vi.spyOn(crypto.subtle, 'exportKey');
 
         await deriveThumbnailKeyFromMaster(freshMk, '1');
 
-        // The exported master key bytes should have been zeroed
-        expect(capturedBuffer).not.toBeNull();
-        const bytes = new Uint8Array(capturedBuffer!);
-        const allZero = bytes.every(b => b === 0);
-        expect(allZero).toBe(true);
-
+        // exportKey should NOT be called on the master key
+        expect(exportSpy).not.toHaveBeenCalled();
         exportSpy.mockRestore();
     });
 });

@@ -19,7 +19,6 @@ import { useCallback, useState, useMemo, useSyncExternalStore } from 'react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { useAuth } from '@/_core/hooks/useAuth';
-import { getKeyWrapProvider } from '@/lib/platform/webKeyWrapProvider';
 import { getHybridKemProvider } from '@/lib/platform/webHybridKemProvider';
 import { getHybridSignatureProvider } from '@/lib/platform/webHybridSignatureProvider';
 import { base64ToArrayBuffer, arrayBufferToBase64 } from '@/lib/platform';
@@ -35,6 +34,9 @@ import {
   decryptLargeSecretKey,
   deriveArgon2Key,
   unwrapMasterKey,
+  createMasterKeyBundle,
+  wrapSecretWithMK,
+  unwrapSecretWithMK,
   deriveFileKeyFromMaster,
   deriveFileKeyWithBytesFromMaster,
   deriveFilenameKeyFromMaster,
@@ -42,12 +44,13 @@ import {
   deriveFingerprintKeyFromMaster,
   deriveThumbnailKeyFromMaster,
 } from './masterKeyCrypto';
+import type { MasterKeyBundle } from './masterKeyCrypto';
 import type { HybridSecretKey, HybridPublicKey } from '@stenvault/shared/platform/crypto';
 import { ARGON2_PARAMS, type Argon2Params } from '@stenvault/shared/platform/crypto';
 
 // Re-export types and functions used by external consumers
 export { deriveThumbnailKeyFromMaster } from './masterKeyCrypto';
-export type { DerivedFileKeyWithBytes } from './masterKeyCrypto';
+export type { DerivedFileKeyWithBytes, MasterKeyBundle } from './masterKeyCrypto';
 import type { DerivedFileKeyWithBytes } from './masterKeyCrypto';
 
 // ============ Session Cache (Module-level Singleton) ============
@@ -60,7 +63,7 @@ const MAX_CACHE_LIFETIME_MS = 30 * 60 * 1000;
 const DEFERRAL_CHECK_MS = 10_000;
 
 interface MasterKeyCache {
-  key: CryptoKey;
+  bundle: MasterKeyBundle;
   derivedAt: number;
   userId: number;
 }
@@ -116,11 +119,11 @@ function isCacheValid(userId: number, timeoutMs: number = DEFAULT_CACHE_TIMEOUT_
 }
 
 /**
- * Get cached master key if valid
+ * Get cached master key bundle if valid
  */
-function getCachedMasterKey(userId: number, timeoutMs?: number): CryptoKey | null {
+function getCachedMasterKey(userId: number, timeoutMs?: number): MasterKeyBundle | null {
   if (isCacheValid(userId, timeoutMs)) {
-    return masterKeyCache!.key;
+    return masterKeyCache!.bundle;
   }
   // Clear expired/invalid cache (including timer and hybrid keys)
   if (masterKeyCache) {
@@ -130,11 +133,11 @@ function getCachedMasterKey(userId: number, timeoutMs?: number): CryptoKey | nul
 }
 
 /**
- * Cache master key and schedule expiration notification
+ * Cache master key bundle and schedule expiration notification
  */
-function cacheMasterKey(key: CryptoKey, userId: number): void {
+function cacheMasterKey(bundle: MasterKeyBundle, userId: number): void {
   masterKeyCache = {
-    key,
+    bundle,
     derivedAt: Date.now(),
     userId,
   };
@@ -364,10 +367,10 @@ export interface UseMasterKeyReturn {
   /** Whether Master Key is configured on server */
   isConfigured: boolean;
   /** Derive master key from password (caches result for session) */
-  deriveMasterKey: (password: string) => Promise<CryptoKey>;
+  deriveMasterKey: (password: string) => Promise<MasterKeyBundle>;
   /** Derive unique file key from Master Key using HKDF (for encryption v3) */
   deriveFileKey: (fileId: string, timestamp: number) => Promise<CryptoKey>;
-  /** 
+  /**
    * Derive file key WITH raw bytes for Web Worker decryption (Phase 7.1)
    * SECURITY: Caller MUST call zeroBytes() immediately after Worker postMessage!
    */
@@ -385,8 +388,8 @@ export interface UseMasterKeyReturn {
     success: boolean;
     recoveryCodesPlain: string[];
   }>;
-  /** Get cached master key without password (returns null if not cached or expired) */
-  getCachedKey: () => CryptoKey | null;
+  /** Get cached master key bundle without password (returns null if not cached or expired) */
+  getCachedKey: () => MasterKeyBundle | null;
   /** Check if master key is cached and valid */
   isCached: boolean;
   /** Clear the cached master key (locks the vault) */
@@ -442,8 +445,8 @@ export function useMasterKey(): UseMasterKeyReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, currentCacheVersion]);
 
-  // Get cached key for current user
-  const getCachedKey = useCallback((): CryptoKey | null => {
+  // Get cached key bundle for current user
+  const getCachedKey = useCallback((): MasterKeyBundle | null => {
     if (!user?.id) return null;
     return getCachedMasterKey(user.id);
   }, [user?.id]);
@@ -474,7 +477,7 @@ export function useMasterKey(): UseMasterKeyReturn {
   // Derive master key from password (with caching)
   // Phase 3 UES: Dual-KEK logic - tries fast-path (Device-KEK with UES) first
   const deriveMasterKey = useCallback(
-    async (password: string): Promise<CryptoKey> => {
+    async (password: string): Promise<MasterKeyBundle> => {
       if (import.meta.env.DEV) console.warn('[MK] deriveMasterKey called', { configLoaded: !!config, isConfigured: config?.isConfigured });
       debugLog('[MK]', 'deriveMasterKey called', { userId: user?.id, configLoaded: !!config, isConfigured: config?.isConfigured });
 
@@ -483,10 +486,10 @@ export function useMasterKey(): UseMasterKeyReturn {
       }
 
       // Check cache first
-      const cachedKey = getCachedMasterKey(user.id);
-      if (cachedKey) {
+      const cachedBundle = getCachedMasterKey(user.id);
+      if (cachedBundle) {
         debugLog('[MK]', 'Using cached master key');
-        return cachedKey;
+        return cachedBundle;
       }
 
       if (!config?.isConfigured) {
@@ -531,7 +534,7 @@ export function useMasterKey(): UseMasterKeyReturn {
 
         // === NORMAL PATH: masterKeyEncrypted is set ===
         if (import.meta.env.DEV) console.warn('[MK] NORMAL PATH: unwrapping masterKeyEncrypted');
-        let masterKey: CryptoKey | undefined;
+        let bundle: MasterKeyBundle | undefined;
         let uesDataForRewrap: { ues: Uint8Array; fingerprintHash: string } | null = null;
 
         // Phase 3 UES: Try fast-path with Device-KEK + locally wrapped key
@@ -544,7 +547,8 @@ export function useMasterKey(): UseMasterKeyReturn {
               debugLog('[FAST]', 'Trying UES fast-path (Device-KEK + local wrapped key)');
               const deviceKek = await deriveDeviceKEKFromUES(password, uesData.ues, saltBytes);
               try {
-                masterKey = await unwrapMasterKey(deviceMK.wrappedKey, deviceKek);
+                const result = await unwrapMasterKey(deviceMK.wrappedKey, deviceKek);
+                bundle = result.bundle;
                 debugLog('[OK]', 'Fast-path unlock successful (~100ms)');
               } catch {
                 // Wrong password or stale local key - clear it and fall through
@@ -560,7 +564,7 @@ export function useMasterKey(): UseMasterKeyReturn {
         }
 
         // Slow-path: Base-KEK from server
-        if (!masterKey) {
+        if (!bundle) {
           if (import.meta.env.DEV) console.warn('[MK] SLOW PATH: deriving Base-KEK');
           debugLog('[SLOW]', 'Using slow-path (Base-KEK)');
           if (!config.argon2Params) {
@@ -570,33 +574,40 @@ export function useMasterKey(): UseMasterKeyReturn {
           const kek = await deriveArgon2Key(password, saltBytes, config.argon2Params as Argon2Params);
           debugLog('[OK]', 'Argon2id derivation complete');
 
-          // Unwrap master key with Base-KEK
+          // Unwrap master key with Base-KEK, optionally re-wrap for device fast-path
           debugLog('[MK]', 'Unwrapping master key with Base-KEK...');
-          masterKey = await unwrapMasterKey(config.masterKeyEncrypted, kek);
-          debugLog('[OK]', 'Slow-path unlock successful');
-
-          // Re-wrap with Device-KEK for fast future unlocks
+          let deviceKekForRewrap: CryptoKey | undefined;
           if (uesDataForRewrap) {
             try {
-              debugLog('[MK]', 'Re-wrapping master key with Device-KEK for fast-path...');
-              const deviceKek = await deriveDeviceKEKFromUES(password, uesDataForRewrap.ues, saltBytes);
-              const wrapped = await crypto.subtle.wrapKey('raw', masterKey, deviceKek, 'AES-KW');
+              deviceKekForRewrap = await deriveDeviceKEKFromUES(password, uesDataForRewrap.ues, saltBytes);
+            } catch {
+              debugError('[WARN]', 'Failed to derive Device-KEK for re-wrap (non-fatal)');
+            }
+          }
+
+          const result = await unwrapMasterKey(config.masterKeyEncrypted, kek, deviceKekForRewrap);
+          bundle = result.bundle;
+          debugLog('[OK]', 'Slow-path unlock successful');
+
+          // Store device-wrapped key for fast future unlocks
+          if (result.deviceWrapped && uesDataForRewrap) {
+            try {
+              debugLog('[MK]', 'Storing device-wrapped key for fast-path...');
               await storeDeviceWrappedMK(
-                arrayBufferToBase64(wrapped),
+                arrayBufferToBase64(result.deviceWrapped),
                 user.id,
                 uesDataForRewrap.fingerprintHash
               );
               debugLog('[OK]', 'Device-wrapped key stored - next unlock will be fast (~100ms)');
-            } catch (rewrapErr) {
-              // Non-fatal: fast-path won't be available, but unlock worked
-              debugError('[WARN]', 'Failed to re-wrap for fast-path (non-fatal)', rewrapErr);
+            } catch (storeErr) {
+              debugError('[WARN]', 'Failed to store device-wrapped key (non-fatal)', storeErr);
             }
           }
         }
 
-        // Cache for session
-        cacheMasterKey(masterKey, user.id);
-        debugLog('[OK]', 'Master key derived, unwrapped, and cached');
+        // Cache non-extractable bundle for session
+        cacheMasterKey(bundle, user.id);
+        debugLog('[OK]', 'Master key derived, unwrapped, and cached (non-extractable)');
 
         // ===== Phase 2 Migration: Generate hybrid keypair if missing =====
         // Non-blocking: if WASM fails, vault unlock still succeeds — V4 uploads will fail gracefully
@@ -613,18 +624,12 @@ export function useMasterKey(): UseMasterKeyReturn {
               }
 
               debugLog('[CRYPTO]', 'Migrating: generating hybrid keypairs (X25519 + ML-KEM-768)');
-              const keyWrap = getKeyWrapProvider();
               const { publicKey, secretKey } = await hybridKem.generateKeyPair();
 
-              // Export Master Key for wrapping
-              const mkBytes = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
-
               // Wrap X25519 secret (32 bytes) with AES-KW, encrypt ML-KEM secret (2400 bytes) with AES-GCM
-              const x25519Wrapped = await keyWrap.wrap(secretKey.classical, mkBytes);
-              const mlkemEncrypted = await encryptLargeSecretKey(secretKey.postQuantum, mkBytes);
-
-              // Zero MK bytes
-              mkBytes.fill(0);
+              // Uses non-extractable CryptoKeys from bundle — no raw MK bytes needed
+              const x25519WrappedBytes = await wrapSecretWithMK(secretKey.classical, bundle.aesKw);
+              const mlkemEncrypted = await encryptLargeSecretKey(secretKey.postQuantum, bundle.aesGcm);
 
               // Generate fingerprint
               const fingerprint = await generateKeyFingerprint(publicKey.classical, publicKey.postQuantum);
@@ -632,7 +637,7 @@ export function useMasterKey(): UseMasterKeyReturn {
               // Store on server
               await storeHybridKeyPairMutation.mutateAsync({
                 x25519PublicKey: arrayBufferToBase64(toArrayBuffer(publicKey.classical)),
-                x25519SecretKeyEncrypted: arrayBufferToBase64(toArrayBuffer(x25519Wrapped.wrappedKey)),
+                x25519SecretKeyEncrypted: arrayBufferToBase64(toArrayBuffer(x25519WrappedBytes)),
                 mlkem768PublicKey: arrayBufferToBase64(toArrayBuffer(publicKey.postQuantum)),
                 mlkem768SecretKeyEncrypted: arrayBufferToBase64(toArrayBuffer(mlkemEncrypted)),
                 fingerprint,
@@ -685,11 +690,9 @@ export function useMasterKey(): UseMasterKeyReturn {
                 sigFingerprint = await generateKeyFingerprint(sigPublicKey.classical, sigPublicKey.postQuantum);
               }
 
-              // Encrypt both secret keys with Master Key (AES-256-GCM)
-              const mkBytes = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
-              const ed25519Encrypted = await encryptLargeSecretKey(sigSecretKey.classical, mkBytes);
-              const mldsa65Encrypted = await encryptLargeSecretKey(sigSecretKey.postQuantum, mkBytes);
-              mkBytes.fill(0);
+              // Encrypt both secret keys with Master Key's AES-GCM CryptoKey (non-extractable)
+              const ed25519Encrypted = await encryptLargeSecretKey(sigSecretKey.classical, bundle.aesGcm);
+              const mldsa65Encrypted = await encryptLargeSecretKey(sigSecretKey.postQuantum, bundle.aesGcm);
               sigSecretKey.classical.fill(0);
               sigSecretKey.postQuantum.fill(0);
 
@@ -713,7 +716,7 @@ export function useMasterKey(): UseMasterKeyReturn {
           })();
         }
 
-        return masterKey;
+        return bundle;
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to derive master key';
         if (import.meta.env.DEV) console.error('[MK] deriveMasterKey FAILED:', message);
@@ -730,38 +733,21 @@ export function useMasterKey(): UseMasterKeyReturn {
   // Derive file key from Master Key using HKDF (for encryption v3)
   const deriveFileKey = useCallback(
     async (fileId: string, timestamp: number): Promise<CryptoKey> => {
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Get cached master key - must be unlocked
-      const masterKey = getCachedMasterKey(user.id);
-      if (!masterKey) {
-        throw new Error('Vault is locked. Please unlock with your Master Password first.');
-      }
-
-      // Derive unique file key using HKDF
-      return deriveFileKeyFromMaster(masterKey, fileId, timestamp);
+      if (!user?.id) throw new Error('User not authenticated');
+      const bundle = getCachedMasterKey(user.id);
+      if (!bundle) throw new Error('Vault is locked. Please unlock with your Master Password first.');
+      return deriveFileKeyFromMaster(bundle.hkdf, fileId, timestamp);
     },
     [user?.id]
   );
 
   // Derive file key WITH raw bytes for Web Worker (Phase 7.1)
-  // SECURITY: Returns key bytes that MUST be zeroed after Worker transfer!
   const deriveFileKeyWithBytes = useCallback(
     async (fileId: string, timestamp: number): Promise<DerivedFileKeyWithBytes> => {
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Get cached master key - must be unlocked
-      const masterKey = getCachedMasterKey(user.id);
-      if (!masterKey) {
-        throw new Error('Vault is locked. Please unlock with your Master Password first.');
-      }
-
-      // Derive file key with raw bytes for Worker transfer
-      return deriveFileKeyWithBytesFromMaster(masterKey, fileId, timestamp);
+      if (!user?.id) throw new Error('User not authenticated');
+      const bundle = getCachedMasterKey(user.id);
+      if (!bundle) throw new Error('Vault is locked. Please unlock with your Master Password first.');
+      return deriveFileKeyWithBytesFromMaster(bundle.hkdf, fileId, timestamp);
     },
     [user?.id]
   );
@@ -769,18 +755,10 @@ export function useMasterKey(): UseMasterKeyReturn {
   // Derive filename key from Master Key using HKDF (for Phase 5 Zero-Knowledge)
   const deriveFilenameKey = useCallback(
     async (): Promise<CryptoKey> => {
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Get cached master key - must be unlocked
-      const masterKey = getCachedMasterKey(user.id);
-      if (!masterKey) {
-        throw new Error('Vault is locked. Please unlock with your Master Password first.');
-      }
-
-      // Derive filename key using HKDF (same key for all filenames)
-      return deriveFilenameKeyFromMaster(masterKey);
+      if (!user?.id) throw new Error('User not authenticated');
+      const bundle = getCachedMasterKey(user.id);
+      if (!bundle) throw new Error('Vault is locked. Please unlock with your Master Password first.');
+      return deriveFilenameKeyFromMaster(bundle.hkdf);
     },
     [user?.id]
   );
@@ -788,18 +766,10 @@ export function useMasterKey(): UseMasterKeyReturn {
   // Derive foldername key from Master Key using HKDF (Phase C Zero-Knowledge)
   const deriveFoldernameKey = useCallback(
     async (): Promise<CryptoKey> => {
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Get cached master key - must be unlocked
-      const masterKey = getCachedMasterKey(user.id);
-      if (!masterKey) {
-        throw new Error('Vault is locked. Please unlock with your Master Password first.');
-      }
-
-      // Derive foldername key using HKDF (same key for all folder names)
-      return deriveFoldernameKeyFromMaster(masterKey);
+      if (!user?.id) throw new Error('User not authenticated');
+      const bundle = getCachedMasterKey(user.id);
+      if (!bundle) throw new Error('Vault is locked. Please unlock with your Master Password first.');
+      return deriveFoldernameKeyFromMaster(bundle.hkdf);
     },
     [user?.id]
   );
@@ -807,18 +777,10 @@ export function useMasterKey(): UseMasterKeyReturn {
   // Derive thumbnail key from Master Key using HKDF (Phase 7.2)
   const deriveThumbnailKey = useCallback(
     async (fileId: string): Promise<CryptoKey> => {
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Get cached master key - must be unlocked
-      const masterKey = getCachedMasterKey(user.id);
-      if (!masterKey) {
-        throw new Error('Vault is locked. Please unlock with your Master Password first.');
-      }
-
-      // Derive thumbnail key using HKDF (unique per file)
-      return deriveThumbnailKeyFromMaster(masterKey, fileId);
+      if (!user?.id) throw new Error('User not authenticated');
+      const bundle = getCachedMasterKey(user.id);
+      if (!bundle) throw new Error('Vault is locked. Please unlock with your Master Password first.');
+      return deriveThumbnailKeyFromMaster(bundle.hkdf, fileId);
     },
     [user?.id]
   );
@@ -826,18 +788,10 @@ export function useMasterKey(): UseMasterKeyReturn {
   // Derive fingerprint key from Master Key using HKDF (for quantum-safe duplicate detection)
   const deriveFingerprintKey = useCallback(
     async (): Promise<CryptoKey> => {
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Get cached master key - must be unlocked
-      const masterKey = getCachedMasterKey(user.id);
-      if (!masterKey) {
-        throw new Error('Vault is locked. Please unlock with your Master Password first.');
-      }
-
-      // Derive fingerprint key using HKDF (same key for all files)
-      return deriveFingerprintKeyFromMaster(masterKey);
+      if (!user?.id) throw new Error('User not authenticated');
+      const bundle = getCachedMasterKey(user.id);
+      if (!bundle) throw new Error('Vault is locked. Please unlock with your Master Password first.');
+      return deriveFingerprintKeyFromMaster(bundle.hkdf);
     },
     [user?.id]
   );
@@ -874,18 +828,19 @@ export function useMasterKey(): UseMasterKeyReturn {
         };
         const kek = await deriveArgon2Key(password, salt, argon2Params);
 
-        // 5. Generate real Master Key (random 32 bytes) and wrap with KEK
+        // 5. Generate real Master Key (random 32 bytes), wrap with KEK, create non-extractable bundle
         const masterKeyRaw = crypto.getRandomValues(new Uint8Array(32));
-        const masterKey = await crypto.subtle.importKey(
-          'raw',
-          toArrayBuffer(masterKeyRaw),
-          { name: 'AES-GCM', length: 256 },
-          true,
-          ['wrapKey', 'unwrapKey']
+
+        // Import as extractable temporarily for wrapping with KEK
+        const tempKey = await crypto.subtle.importKey(
+          'raw', toArrayBuffer(masterKeyRaw),
+          { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']
         );
-        masterKeyRaw.fill(0); // Zero raw master key bytes after import
-        const wrappedMasterKey = await crypto.subtle.wrapKey('raw', masterKey, kek, 'AES-KW');
+        const wrappedMasterKey = await crypto.subtle.wrapKey('raw', tempKey, kek, 'AES-KW');
         const masterKeyEncryptedB64 = arrayBufferToBase64(wrappedMasterKey);
+
+        // Create non-extractable bundle (zeros masterKeyRaw)
+        const bundle = await createMasterKeyBundle(masterKeyRaw);
 
         // 6. Send to backend (including wrapped Master Key + Argon2 params)
         await setupMasterKeyMutation.mutateAsync({
@@ -899,14 +854,13 @@ export function useMasterKey(): UseMasterKeyReturn {
         // 9. Refresh config
         await refetch();
 
-        // 10. Cache the REAL Master Key (not KEK)
-        cacheMasterKey(masterKey, user.id);
+        // 10. Cache non-extractable bundle
+        cacheMasterKey(bundle, user.id);
 
         // ===== Phase 2 NEW_DAY: Generate and store Hybrid Keypairs (MANDATORY) =====
         debugLog('[CRYPTO]', 'Generating hybrid keypairs (X25519 + ML-KEM-768)');
 
         const hybridKem = getHybridKemProvider();
-        const keyWrap = getKeyWrapProvider();
 
         // V4 hybrid encryption is mandatory — fail if WASM not available
         const isHybridAvailable = await hybridKem.isAvailable();
@@ -919,13 +873,9 @@ export function useMasterKey(): UseMasterKeyReturn {
         // Generate hybrid keypair
         const { publicKey, secretKey } = await hybridKem.generateKeyPair();
 
-        // Export Master Key for wrapping (need raw bytes)
-        const masterKeyBytes = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
-
-        // Wrap X25519 secret (32 bytes) with AES-KW, encrypt ML-KEM secret (2400 bytes) with AES-GCM
-        const x25519Wrapped = await keyWrap.wrap(secretKey.classical, masterKeyBytes);
-        const mlkemEncrypted = await encryptLargeSecretKey(secretKey.postQuantum, masterKeyBytes);
-        masterKeyBytes.fill(0);
+        // Wrap/encrypt with non-extractable bundle keys — no raw MK bytes needed
+        const x25519WrappedBytes = await wrapSecretWithMK(secretKey.classical, bundle.aesKw);
+        const mlkemEncrypted = await encryptLargeSecretKey(secretKey.postQuantum, bundle.aesGcm);
 
         // Generate fingerprint
         const fingerprint = await generateKeyFingerprint(publicKey.classical, publicKey.postQuantum);
@@ -933,7 +883,7 @@ export function useMasterKey(): UseMasterKeyReturn {
         // Store on server
         await storeHybridKeyPairMutation.mutateAsync({
           x25519PublicKey: arrayBufferToBase64(toArrayBuffer(publicKey.classical)),
-          x25519SecretKeyEncrypted: arrayBufferToBase64(toArrayBuffer(x25519Wrapped.wrappedKey)),
+          x25519SecretKeyEncrypted: arrayBufferToBase64(toArrayBuffer(x25519WrappedBytes)),
           mlkem768PublicKey: arrayBufferToBase64(toArrayBuffer(publicKey.postQuantum)),
           mlkem768SecretKeyEncrypted: arrayBufferToBase64(toArrayBuffer(mlkemEncrypted)),
           fingerprint,
@@ -954,13 +904,11 @@ export function useMasterKey(): UseMasterKeyReturn {
           let sigFingerprint: string;
 
           if (isSignatureAvailable) {
-            // Client-side generation (preferred: keys never leave browser)
             const keyPair = await signatureProvider.generateKeyPair();
             sigPublicKey = keyPair.publicKey;
             sigSecretKey = keyPair.secretKey;
             sigFingerprint = await generateKeyFingerprint(sigPublicKey.classical, sigPublicKey.postQuantum);
           } else {
-            // ML-DSA-65 WASM not available — generate Ed25519 only (native WebCrypto)
             debugLog('[CRYPTO]', 'ML-DSA-65 WASM unavailable, generating Ed25519-only client-side');
             const ed25519Key = await crypto.subtle.generateKey(
               { name: 'Ed25519' } as any, true, ['sign', 'verify']
@@ -972,11 +920,9 @@ export function useMasterKey(): UseMasterKeyReturn {
             sigFingerprint = await generateKeyFingerprint(sigPublicKey.classical, sigPublicKey.postQuantum);
           }
 
-          // Encrypt secret keys with Master Key (reuse masterKey CryptoKey from setup)
-          const sigMkBytes = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
-          const ed25519Encrypted = await encryptLargeSecretKey(sigSecretKey.classical, sigMkBytes);
-          const mldsa65Encrypted = await encryptLargeSecretKey(sigSecretKey.postQuantum, sigMkBytes);
-          sigMkBytes.fill(0);
+          // Encrypt with non-extractable AES-GCM key
+          const ed25519Encrypted = await encryptLargeSecretKey(sigSecretKey.classical, bundle.aesGcm);
+          const mldsa65Encrypted = await encryptLargeSecretKey(sigSecretKey.postQuantum, bundle.aesGcm);
           sigSecretKey.classical.fill(0);
           sigSecretKey.postQuantum.fill(0);
 
@@ -991,7 +937,6 @@ export function useMasterKey(): UseMasterKeyReturn {
           debugLog('[CRYPTO]', 'Hybrid signature keypairs generated and stored', { fingerprint: sigFingerprint });
           await refetchHasSignatureKeyPair();
         } catch (sigErr) {
-          // Non-fatal: log warning but don't fail the entire setup
           debugError('[CRYPTO]', 'Failed to generate signature keypairs (non-fatal)', sigErr);
         }
 
@@ -1064,9 +1009,9 @@ export function useMasterKey(): UseMasterKeyReturn {
       return hybridSecretKeyCache.secretKey;
     }
 
-    // Get cached master key - must be unlocked
-    const masterKey = getCachedMasterKey(user.id);
-    if (!masterKey) {
+    // Get cached master key bundle - must be unlocked
+    const bundle = getCachedMasterKey(user.id);
+    if (!bundle) {
       debugError('[CRYPTO]', 'Vault is locked, cannot get hybrid secret key');
       return null;
     }
@@ -1079,29 +1024,18 @@ export function useMasterKey(): UseMasterKeyReturn {
         return null;
       }
 
-      // Export Master Key for unwrapping
-      const masterKeyBytes = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
+      // Unwrap X25519 secret (AES-KW) and decrypt ML-KEM secret (AES-GCM)
+      // Uses non-extractable CryptoKeys from bundle — no raw MK bytes needed
+      const x25519SecretWrapped = new Uint8Array(base64ToArrayBuffer(secretKeyResponse.x25519SecretKeyEncrypted));
+      const mlkemSecretEncrypted = new Uint8Array(base64ToArrayBuffer(secretKeyResponse.mlkem768SecretKeyEncrypted));
 
-      let secretKey: HybridSecretKey;
-      try {
-        const keyWrap = getKeyWrapProvider();
+      const x25519Secret = await unwrapSecretWithMK(x25519SecretWrapped, bundle.aesKw);
+      const mlkemDecrypted = await decryptLargeSecretKey(mlkemSecretEncrypted, bundle.aesGcm);
 
-        // Unwrap X25519 secret (AES-KW) and decrypt ML-KEM secret (AES-GCM)
-        const x25519SecretWrapped = new Uint8Array(base64ToArrayBuffer(secretKeyResponse.x25519SecretKeyEncrypted));
-        const mlkemSecretEncrypted = new Uint8Array(base64ToArrayBuffer(secretKeyResponse.mlkem768SecretKeyEncrypted));
-        const keyVersion = secretKeyResponse.keyVersion ?? 1;
-
-        const x25519Result = await keyWrap.unwrap(x25519SecretWrapped, masterKeyBytes, keyVersion);
-        const mlkemDecrypted = await decryptLargeSecretKey(mlkemSecretEncrypted, masterKeyBytes);
-
-        secretKey = {
-          classical: x25519Result.masterKey,
-          postQuantum: mlkemDecrypted,
-        };
-      } finally {
-        // Zero master key bytes after use
-        masterKeyBytes.fill(0);
-      }
+      const secretKey: HybridSecretKey = {
+        classical: x25519Secret,
+        postQuantum: mlkemDecrypted,
+      };
 
       // Cache for session
       hybridSecretKeyCache = {

@@ -32,6 +32,15 @@ async function generateTestKey(): Promise<CryptoKey> {
   );
 }
 
+// Helper to generate an AES-KW key (used as personal MK KEK in tests)
+async function generateAesKwKey(): Promise<CryptoKey> {
+  return crypto.subtle.generateKey(
+    { name: 'AES-KW', length: 256 },
+    true,
+    ['wrapKey', 'unwrapKey']
+  );
+}
+
 // Helper to compare two CryptoKeys by raw bytes (only works for extractable keys)
 async function keysEqual(a: CryptoKey, b: CryptoKey): Promise<boolean> {
   const aBytes = new Uint8Array(await crypto.subtle.exportKey('raw', a));
@@ -55,8 +64,8 @@ async function keyFingerprint(key: CryptoKey): Promise<string> {
 
 describe('orgMasterKeyCrypto', () => {
   describe('OMK Wrap/Unwrap (AES-KW)', () => {
-    it('should roundtrip wrap and unwrap an OMK with personal MK', async () => {
-      const personalMK = await generateTestKey();
+    it('should roundtrip wrap and unwrap an OMK with personal MK (AES-KW)', async () => {
+      const personalMK = await generateAesKwKey();
       const omk = await generateTestKey();
 
       const wrappedB64 = await wrapOMKWithPersonalMK(omk, personalMK);
@@ -68,9 +77,19 @@ describe('orgMasterKeyCrypto', () => {
       expect(await keysEqual(omk, unwrapped)).toBe(true);
     });
 
+    it('should roundtrip wrap and unwrap an OMK with MasterKeyBundle', async () => {
+      const aesKw = await generateAesKwKey();
+      const bundle = { aesKw };
+      const omk = await generateTestKey();
+
+      const wrappedB64 = await wrapOMKWithPersonalMK(omk, bundle);
+      const unwrapped = await unwrapOMKWithPersonalMK(wrappedB64, bundle);
+      expect(await keysEqual(omk, unwrapped)).toBe(true);
+    });
+
     it('should fail to unwrap with wrong personal MK', async () => {
-      const personalMK1 = await generateTestKey();
-      const personalMK2 = await generateTestKey();
+      const personalMK1 = await generateAesKwKey();
+      const personalMK2 = await generateAesKwKey();
       const omk = await generateTestKey();
 
       const wrappedB64 = await wrapOMKWithPersonalMK(omk, personalMK1);
@@ -78,7 +97,7 @@ describe('orgMasterKeyCrypto', () => {
     });
 
     it('should produce different wrapped output for different OMKs', async () => {
-      const personalMK = await generateTestKey();
+      const personalMK = await generateAesKwKey();
       const omk1 = await generateTestKey();
       const omk2 = await generateTestKey();
 

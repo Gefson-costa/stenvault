@@ -50,6 +50,9 @@ import {
     decryptLargeSecretKey,
     deriveArgon2Key,
     unwrapMasterKey,
+    createMasterKeyBundle,
+    wrapSecretWithMK,
+    unwrapSecretWithMK,
     deriveFileKeyFromMaster,
     deriveFilenameKeyFromMaster,
     deriveFoldernameKeyFromMaster,
@@ -77,6 +80,12 @@ async function generateAesKwKey(): Promise<CryptoKey> {
         true,
         ['wrapKey', 'unwrapKey']
     );
+}
+
+/** Generate an HKDF key from random bytes (for derive* function tests) */
+async function generateHkdfKey(): Promise<CryptoKey> {
+    const raw = crypto.getRandomValues(new Uint8Array(32));
+    return crypto.subtle.importKey('raw', raw, 'HKDF', false, ['deriveKey', 'deriveBits']);
 }
 
 async function exportKeyRaw(key: CryptoKey): Promise<Uint8Array> {
@@ -235,7 +244,7 @@ describe('masterKeyCrypto', () => {
     // ==================== unwrapMasterKey ====================
 
     describe('unwrapMasterKey', () => {
-        it('should unwrap a wrapped master key (wrap -> unwrap roundtrip)', async () => {
+        it('should unwrap and return a MasterKeyBundle with 3 non-extractable keys', async () => {
             const kek = await generateAesKwKey();
             const masterKey = await generateAesGcmKey(true);
 
@@ -244,13 +253,33 @@ describe('masterKeyCrypto', () => {
             const wrappedB64 = btoa(String.fromCharCode(...new Uint8Array(wrapped)));
 
             // Unwrap it
-            const unwrapped = await unwrapMasterKey(wrappedB64, kek);
+            const result = await unwrapMasterKey(wrappedB64, kek);
 
-            expect(unwrapped).toBeDefined();
-            expect(unwrapped.algorithm.name).toBe('AES-GCM');
-            expect(unwrapped.usages).toContain('wrapKey');
-            expect(unwrapped.usages).toContain('unwrapKey');
-            expect(await keysEqual(masterKey, unwrapped)).toBe(true);
+            expect(result.bundle).toBeDefined();
+            expect(result.bundle.hkdf.algorithm.name).toBe('HKDF');
+            expect(result.bundle.aesGcm.algorithm.name).toBe('AES-GCM');
+            expect(result.bundle.aesKw.algorithm.name).toBe('AES-KW');
+            // All keys should be non-extractable
+            expect(result.bundle.hkdf.extractable).toBe(false);
+            expect(result.bundle.aesGcm.extractable).toBe(false);
+            expect(result.bundle.aesKw.extractable).toBe(false);
+            // No device wrap requested
+            expect(result.deviceWrapped).toBeUndefined();
+        });
+
+        it('should return deviceWrapped when deviceKek is provided', async () => {
+            const kek = await generateAesKwKey();
+            const deviceKek = await generateAesKwKey();
+            const masterKey = await generateAesGcmKey(true);
+
+            const wrapped = await crypto.subtle.wrapKey('raw', masterKey, kek, 'AES-KW');
+            const wrappedB64 = btoa(String.fromCharCode(...new Uint8Array(wrapped)));
+
+            const result = await unwrapMasterKey(wrappedB64, kek, deviceKek);
+
+            expect(result.bundle).toBeDefined();
+            expect(result.deviceWrapped).toBeDefined();
+            expect(result.deviceWrapped!.byteLength).toBe(40); // AES-KW adds 8 bytes
         });
 
         it('should fail with wrong KEK', async () => {
@@ -265,11 +294,51 @@ describe('masterKeyCrypto', () => {
         });
     });
 
+    // ==================== createMasterKeyBundle ====================
+
+    describe('createMasterKeyBundle', () => {
+        it('should create 3 non-extractable CryptoKeys from raw bytes', async () => {
+            const rawBytes = crypto.getRandomValues(new Uint8Array(32));
+            const bundle = await createMasterKeyBundle(rawBytes);
+
+            expect(bundle.hkdf.algorithm.name).toBe('HKDF');
+            expect(bundle.aesGcm.algorithm.name).toBe('AES-GCM');
+            expect(bundle.aesKw.algorithm.name).toBe('AES-KW');
+            expect(bundle.hkdf.extractable).toBe(false);
+            expect(bundle.aesGcm.extractable).toBe(false);
+            expect(bundle.aesKw.extractable).toBe(false);
+        });
+
+        it('should zero the input bytes after import', async () => {
+            const rawBytes = crypto.getRandomValues(new Uint8Array(32));
+            await createMasterKeyBundle(rawBytes);
+
+            expect(rawBytes.every(b => b === 0)).toBe(true);
+        });
+    });
+
+    // ==================== wrapSecretWithMK / unwrapSecretWithMK ====================
+
+    describe('wrapSecretWithMK / unwrapSecretWithMK', () => {
+        it('should roundtrip a 32-byte secret', async () => {
+            const rawBytes = crypto.getRandomValues(new Uint8Array(32));
+            const rawCopy = new Uint8Array(rawBytes);
+            const bundle = await createMasterKeyBundle(rawBytes);
+
+            const secret = crypto.getRandomValues(new Uint8Array(32));
+            const wrapped = await wrapSecretWithMK(secret, bundle.aesKw);
+            expect(wrapped.length).toBe(40); // AES-KW adds 8 bytes
+
+            const unwrapped = await unwrapSecretWithMK(wrapped, bundle.aesKw);
+            expect(unwrapped).toEqual(secret);
+        });
+    });
+
     // ==================== deriveFileKeyFromMaster ====================
 
     describe('deriveFileKeyFromMaster', () => {
         it('should derive deterministic key (same input -> same key)', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
             const fileId = 'file-123';
             const timestamp = 1700000000;
 
@@ -282,7 +351,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive different key for different fileId', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
             const timestamp = 1700000000;
 
             const key1 = await deriveFileKeyFromMaster(masterKey, 'file-1', timestamp);
@@ -294,7 +363,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive different key for different timestamp', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
             const fileId = 'file-123';
 
             const key1 = await deriveFileKeyFromMaster(masterKey, fileId, 1700000000);
@@ -306,8 +375,8 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive different key for different master key', async () => {
-            const masterKey1 = await generateAesGcmKey(true);
-            const masterKey2 = await generateAesGcmKey(true);
+            const masterKey1 = await generateHkdfKey();
+            const masterKey2 = await generateHkdfKey();
             const fileId = 'file-123';
             const timestamp = 1700000000;
 
@@ -320,7 +389,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should return AES-GCM key with encrypt/decrypt usages', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
 
             const key = await deriveFileKeyFromMaster(masterKey, 'file-1', 1700000000);
 
@@ -335,7 +404,7 @@ describe('masterKeyCrypto', () => {
 
     describe('deriveFilenameKeyFromMaster', () => {
         it('should return AES-GCM key', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
 
             const key = await deriveFilenameKeyFromMaster(masterKey);
 
@@ -345,7 +414,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive deterministic key (same master key -> same filename key)', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
 
             const key1 = await deriveFilenameKeyFromMaster(masterKey);
             const key2 = await deriveFilenameKeyFromMaster(masterKey);
@@ -356,8 +425,8 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive different key for different master key', async () => {
-            const masterKey1 = await generateAesGcmKey(true);
-            const masterKey2 = await generateAesGcmKey(true);
+            const masterKey1 = await generateHkdfKey();
+            const masterKey2 = await generateHkdfKey();
 
             const key1 = await deriveFilenameKeyFromMaster(masterKey1);
             const key2 = await deriveFilenameKeyFromMaster(masterKey2);
@@ -368,7 +437,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should be non-extractable', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
             const key = await deriveFilenameKeyFromMaster(masterKey);
             expect(key.extractable).toBe(false);
         });
@@ -378,7 +447,7 @@ describe('masterKeyCrypto', () => {
 
     describe('deriveFoldernameKeyFromMaster', () => {
         it('should return AES-GCM key', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
 
             const key = await deriveFoldernameKeyFromMaster(masterKey);
 
@@ -388,7 +457,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive deterministic key (same master key -> same foldername key)', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
 
             const key1 = await deriveFoldernameKeyFromMaster(masterKey);
             const key2 = await deriveFoldernameKeyFromMaster(masterKey);
@@ -399,8 +468,8 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive different key for different master key', async () => {
-            const masterKey1 = await generateAesGcmKey(true);
-            const masterKey2 = await generateAesGcmKey(true);
+            const masterKey1 = await generateHkdfKey();
+            const masterKey2 = await generateHkdfKey();
 
             const key1 = await deriveFoldernameKeyFromMaster(masterKey1);
             const key2 = await deriveFoldernameKeyFromMaster(masterKey2);
@@ -411,13 +480,13 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should be non-extractable', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
             const key = await deriveFoldernameKeyFromMaster(masterKey);
             expect(key.extractable).toBe(false);
         });
 
         it('should derive different key than filename key (different HKDF salt/info)', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
 
             const foldernameKey = await deriveFoldernameKeyFromMaster(masterKey);
             const filenameKey = await deriveFilenameKeyFromMaster(masterKey);
@@ -432,7 +501,7 @@ describe('masterKeyCrypto', () => {
 
     describe('deriveFingerprintKeyFromMaster', () => {
         it('should return HMAC key', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
 
             const key = await deriveFingerprintKeyFromMaster(masterKey);
 
@@ -441,7 +510,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive deterministic key', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
 
             const key1 = await deriveFingerprintKeyFromMaster(masterKey);
             const key2 = await deriveFingerprintKeyFromMaster(masterKey);
@@ -452,8 +521,8 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive different key for different master key', async () => {
-            const masterKey1 = await generateAesGcmKey(true);
-            const masterKey2 = await generateAesGcmKey(true);
+            const masterKey1 = await generateHkdfKey();
+            const masterKey2 = await generateHkdfKey();
 
             const key1 = await deriveFingerprintKeyFromMaster(masterKey1);
             const key2 = await deriveFingerprintKeyFromMaster(masterKey2);
@@ -464,7 +533,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should be non-extractable', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
             const key = await deriveFingerprintKeyFromMaster(masterKey);
             expect(key.extractable).toBe(false);
         });
@@ -474,7 +543,7 @@ describe('masterKeyCrypto', () => {
 
     describe('deriveThumbnailKeyFromMaster', () => {
         it('should return AES-GCM key', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
 
             const key = await deriveThumbnailKeyFromMaster(masterKey, 'file-1');
 
@@ -484,7 +553,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should be file-specific (different fileId -> different key)', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
 
             const key1 = await deriveThumbnailKeyFromMaster(masterKey, 'file-1');
             const key2 = await deriveThumbnailKeyFromMaster(masterKey, 'file-2');
@@ -495,7 +564,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive deterministic key (same inputs -> same key)', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
             const fileId = 'file-42';
 
             const key1 = await deriveThumbnailKeyFromMaster(masterKey, fileId);
@@ -507,8 +576,8 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should derive different key for different master key', async () => {
-            const masterKey1 = await generateAesGcmKey(true);
-            const masterKey2 = await generateAesGcmKey(true);
+            const masterKey1 = await generateHkdfKey();
+            const masterKey2 = await generateHkdfKey();
 
             const key1 = await deriveThumbnailKeyFromMaster(masterKey1, 'file-1');
             const key2 = await deriveThumbnailKeyFromMaster(masterKey2, 'file-1');
@@ -519,7 +588,7 @@ describe('masterKeyCrypto', () => {
         });
 
         it('should be non-extractable', async () => {
-            const masterKey = await generateAesGcmKey(true);
+            const masterKey = await generateHkdfKey();
             const key = await deriveThumbnailKeyFromMaster(masterKey, 'file-1');
             expect(key.extractable).toBe(false);
         });

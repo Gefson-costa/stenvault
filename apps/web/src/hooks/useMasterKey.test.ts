@@ -193,6 +193,13 @@ vi.mock('./masterKeyCrypto', () => ({
     toArrayBuffer: vi.fn((data: Uint8Array) => data.buffer),
     encryptLargeSecretKey: vi.fn().mockResolvedValue(new Uint8Array(100)),
     decryptLargeSecretKey: vi.fn().mockResolvedValue(new Uint8Array(2400)),
+    createMasterKeyBundle: vi.fn().mockResolvedValue({
+        hkdf: { type: 'secret', extractable: false, algorithm: { name: 'HKDF' }, usages: ['deriveKey', 'deriveBits'] },
+        aesGcm: { type: 'secret', extractable: false, algorithm: { name: 'AES-GCM', length: 256 }, usages: ['encrypt', 'decrypt'] },
+        aesKw: { type: 'secret', extractable: false, algorithm: { name: 'AES-KW', length: 256 }, usages: ['wrapKey', 'unwrapKey'] },
+    }),
+    wrapSecretWithMK: vi.fn().mockResolvedValue(new Uint8Array(40)),
+    unwrapSecretWithMK: vi.fn().mockResolvedValue(new Uint8Array(32)),
     deriveArgon2Key: (...args: unknown[]) => mockDeriveArgon2Key(...args),
     unwrapMasterKey: (...args: unknown[]) => mockUnwrapMasterKey(...args),
     deriveFileKeyFromMaster: (...args: unknown[]) => mockDeriveFileKeyFromMaster(...args),
@@ -205,21 +212,28 @@ import { useMasterKey, clearMasterKeyCache } from './useMasterKey';
 
 // ============ Test Helpers ============
 
-function createMockCryptoKey(): CryptoKey {
-    // Create a mock CryptoKey-like object
+function createMockCryptoKey(algo = 'AES-GCM', usages = ['encrypt', 'decrypt']): CryptoKey {
     return {
         type: 'secret',
-        extractable: true,
-        algorithm: { name: 'AES-GCM', length: 256 },
-        usages: ['encrypt', 'decrypt'],
+        extractable: false,
+        algorithm: { name: algo, length: 256 },
+        usages,
     } as unknown as CryptoKey;
+}
+
+function createMockBundle() {
+    return {
+        hkdf: createMockCryptoKey('HKDF', ['deriveKey', 'deriveBits']),
+        aesGcm: createMockCryptoKey('AES-GCM', ['encrypt', 'decrypt']),
+        aesKw: createMockCryptoKey('AES-KW', ['wrapKey', 'unwrapKey']),
+    };
 }
 
 // ============ Tests ============
 
 describe('useMasterKey', () => {
-    const MOCK_MK = createMockCryptoKey();
-    const MOCK_KEK = createMockCryptoKey();
+    const MOCK_BUNDLE = createMockBundle();
+    const MOCK_KEK = createMockCryptoKey('AES-KW', ['wrapKey', 'unwrapKey']);
     const MOCK_FILE_KEY = createMockCryptoKey();
     const MOCK_FILENAME_KEY = createMockCryptoKey();
     const MOCK_THUMB_KEY = createMockCryptoKey();
@@ -230,7 +244,7 @@ describe('useMasterKey', () => {
 
         // Setup default mock responses
         mockDeriveArgon2Key.mockResolvedValue(MOCK_KEK);
-        mockUnwrapMasterKey.mockResolvedValue(MOCK_MK);
+        mockUnwrapMasterKey.mockResolvedValue({ bundle: MOCK_BUNDLE });
         mockDeriveFileKeyFromMaster.mockResolvedValue(MOCK_FILE_KEY);
         mockDeriveFilenameKeyFromMaster.mockResolvedValue(MOCK_FILENAME_KEY);
         mockDeriveThumbnailKeyFromMaster.mockResolvedValue(MOCK_THUMB_KEY);
@@ -302,14 +316,14 @@ describe('useMasterKey', () => {
         it('derives and caches master key successfully', async () => {
             const { result } = renderHook(() => useMasterKey());
 
-            let mk: CryptoKey;
+            let bundle: any;
             await act(async () => {
-                mk = await result.current.deriveMasterKey('password123');
+                bundle = await result.current.deriveMasterKey('password123');
             });
 
-            expect(mk!).toBe(MOCK_MK);
+            expect(bundle).toBe(MOCK_BUNDLE);
             expect(mockDeriveArgon2Key).toHaveBeenCalled();
-            expect(mockUnwrapMasterKey).toHaveBeenCalledWith('base64WrappedKey==', MOCK_KEK);
+            expect(mockUnwrapMasterKey).toHaveBeenCalled();
             expect(result.current.isUnlocked).toBe(true);
             expect(result.current.isCached).toBe(true);
         });
@@ -323,14 +337,14 @@ describe('useMasterKey', () => {
 
             vi.clearAllMocks();
 
-            let mk: CryptoKey;
+            let bundle: any;
             await act(async () => {
-                mk = await result.current.deriveMasterKey('password123');
+                bundle = await result.current.deriveMasterKey('password123');
             });
 
             // Should NOT call derivation again
             expect(mockDeriveArgon2Key).not.toHaveBeenCalled();
-            expect(mk!).toBeTruthy();
+            expect(bundle).toBeTruthy();
         });
 
         it('throws when encryption not configured', async () => {
@@ -411,7 +425,7 @@ describe('useMasterKey', () => {
             });
 
             expect(fileKey!).toBe(MOCK_FILE_KEY);
-            expect(mockDeriveFileKeyFromMaster).toHaveBeenCalledWith(MOCK_MK, 'file-123', expect.any(Number));
+            expect(mockDeriveFileKeyFromMaster).toHaveBeenCalledWith(MOCK_BUNDLE.hkdf, 'file-123', expect.any(Number));
         });
 
         it('throws when vault is locked', async () => {
@@ -458,7 +472,7 @@ describe('useMasterKey', () => {
             });
 
             expect(key!).toBe(MOCK_FILENAME_KEY);
-            expect(mockDeriveFilenameKeyFromMaster).toHaveBeenCalledWith(MOCK_MK);
+            expect(mockDeriveFilenameKeyFromMaster).toHaveBeenCalledWith(MOCK_BUNDLE.hkdf);
         });
 
         it('throws when vault is locked', async () => {
@@ -486,7 +500,7 @@ describe('useMasterKey', () => {
             });
 
             expect(key!).toBe(MOCK_THUMB_KEY);
-            expect(mockDeriveThumbnailKeyFromMaster).toHaveBeenCalledWith(MOCK_MK, 'file-456');
+            expect(mockDeriveThumbnailKeyFromMaster).toHaveBeenCalledWith(MOCK_BUNDLE.hkdf, 'file-456');
         });
     });
 

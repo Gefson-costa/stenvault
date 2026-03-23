@@ -29,7 +29,7 @@ import {
     deserializeHybridPublicKey,
 } from "@/lib/platform";
 import type { HybridPublicKeySerialized } from "@/lib/platform";
-import { getKeyWrapProvider } from "@/lib/platform/webKeyWrapProvider";
+import { unwrapSecretWithMK, wrapSecretWithMK } from "@/hooks/masterKeyCrypto";
 import { SVCP_CHANNEL_INFO } from "@/hooks/useE2ECrypto";
 
 export type ChannelStatus = "none" | "pending" | "active";
@@ -137,22 +137,15 @@ export function useChatChannel(peerUserId: number) {
 
             (async () => {
                 try {
-                    const masterKey = getCachedKey();
-                    if (!masterKey) return;
-
-                    const masterKeyBytes = new Uint8Array(
-                        await crypto.subtle.exportKey("raw", masterKey)
-                    );
+                    const bundle = getCachedKey();
+                    if (!bundle) return;
 
                     const wrappedBytes = new Uint8Array(
                         base64ToArrayBuffer(secretData.wrappedSecret!)
                     );
 
-                    const keyWrap = getKeyWrapProvider();
-                    const { masterKey: channelSecretBytes } = await keyWrap.unwrap(
-                        wrappedBytes, masterKeyBytes, secretData.keyVersion
-                    );
-
+                    // Unwrap channel secret using non-extractable AES-KW key
+                    const channelSecretBytes = await unwrapSecretWithMK(wrappedBytes, bundle.aesKw);
                     const cryptoKey = await importChannelKey(channelSecretBytes);
 
                     // Cache
@@ -164,7 +157,6 @@ export function useChatChannel(peerUserId: number) {
                     setChannelSecret(cryptoKey);
 
                     // Zero sensitive bytes
-                    masterKeyBytes.fill(0);
                     channelSecretBytes.fill(0);
                 } catch (err) {
                     console.warn("[SVCP] Failed to unwrap channel secret:", err);
@@ -214,14 +206,8 @@ export function useChatChannel(peerUserId: number) {
                 );
                 const channelSecretBytes = await deriveChannelSecret(rawSharedSecret, saltBytes);
 
-                // Wrap with master key
-                const masterKeyBytes = new Uint8Array(
-                    await crypto.subtle.exportKey("raw", masterKey)
-                );
-                const keyWrap = getKeyWrapProvider();
-                const { wrappedKey } = await keyWrap.wrap(
-                    channelSecretBytes, masterKeyBytes, secretData.keyVersion
-                );
+                // Wrap channel secret with non-extractable AES-KW key
+                const wrappedKey = await wrapSecretWithMK(channelSecretBytes, masterKey.aesKw);
 
                 // Store on server
                 await completeMutation.mutateAsync({
@@ -242,7 +228,6 @@ export function useChatChannel(peerUserId: number) {
                 setChannelStatus("active");
 
                 // Zero sensitive bytes
-                masterKeyBytes.fill(0);
                 channelSecretBytes.fill(0);
                 rawSharedSecret.fill(0);
 
@@ -274,10 +259,8 @@ export function useChatChannel(peerUserId: number) {
                 try {
                     const mk = getCachedKey();
                     if (mk) {
-                        const mkBytes = new Uint8Array(await crypto.subtle.exportKey("raw", mk));
                         const wrappedBytes = new Uint8Array(base64ToArrayBuffer(data.wrappedSecret));
-                        const kw = getKeyWrapProvider();
-                        const { masterKey: csBytes } = await kw.unwrap(wrappedBytes, mkBytes, data.keyVersion);
+                        const csBytes = await unwrapSecretWithMK(wrappedBytes, mk.aesKw);
                         const key = await importChannelKey(csBytes);
                         if (user?.id) {
                             channelSecretCache.set(getCacheKey(user.id, peerUserId), {
@@ -285,7 +268,6 @@ export function useChatChannel(peerUserId: number) {
                             });
                         }
                         setChannelSecret(key);
-                        mkBytes.fill(0);
                         csBytes.fill(0);
                         return key;
                     }
@@ -326,14 +308,9 @@ export function useChatChannel(peerUserId: number) {
             const salt = crypto.getRandomValues(new Uint8Array(32));
             const channelSecretBytes = await deriveChannelSecret(rawSharedSecret, salt);
 
-            // Wrap channel secret with master key
-            const masterKeyBytes = new Uint8Array(
-                await crypto.subtle.exportKey("raw", masterKey)
-            );
-            const keyWrap = getKeyWrapProvider();
-            // Channel keyVersion starts at 1 (independent of KEM key version)
+            // Wrap channel secret with non-extractable AES-KW key
             const keyVersion = 1;
-            const { wrappedKey } = await keyWrap.wrap(channelSecretBytes, masterKeyBytes, keyVersion);
+            const wrappedKey = await wrapSecretWithMK(channelSecretBytes, masterKey.aesKw);
 
             // Serialize HybridCiphertext for storage
             const serializedCiphertext = serializeHybridCiphertext(hybridCiphertext);
@@ -364,7 +341,6 @@ export function useChatChannel(peerUserId: number) {
             setChannelKeyVersion(keyVersion);
 
             // Zero sensitive bytes
-            masterKeyBytes.fill(0);
             channelSecretBytes.fill(0);
             rawSharedSecret.fill(0);
 

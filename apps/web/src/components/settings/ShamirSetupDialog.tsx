@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/tooltip";
 import { prepareRecoveryShares } from "@/lib/platform/webShamirRecoveryProvider";
 import { useMasterKey } from "@/hooks/useMasterKey";
+import { deriveRawMasterKeyBytes } from "@/hooks/masterKeyCrypto";
 import { QRCodeSVG } from "qrcode.react";
 
 interface ShareDistribution {
@@ -92,7 +93,7 @@ export function ShamirSetupDialog({
     const [copiedShare, setCopiedShare] = useState<number | null>(null);
     const [isUnlocking, setIsUnlocking] = useState(false);
 
-    const { deriveMasterKey } = useMasterKey();
+    const { deriveMasterKey, config } = useMasterKey();
 
     // Get current encryption config for masterKeyVersion
     const { data: encryptionConfig } = trpc.encryption.getEncryptionConfig.useQuery();
@@ -173,12 +174,21 @@ export function ShamirSetupDialog({
 
         let masterKeyBytes: Uint8Array | null = null;
         try {
-            // Use cached master key from deriveMasterKey (called in handleUnlockAndContinue)
-            const masterKey = await deriveMasterKey(encryptionPassword);
+            // Ensure vault is unlocked (caches non-extractable bundle)
+            await deriveMasterKey(encryptionPassword);
 
-            // Export master key bytes for Shamir splitting
-            masterKeyBytes = new Uint8Array(
-                await crypto.subtle.exportKey("raw", masterKey)
+            // Shamir splitting genuinely needs raw bytes — re-derive transiently
+            if (!config?.salt || !config.argon2Params || !config.masterKeyEncrypted) {
+                throw new Error('Encryption configuration not available');
+            }
+            const saltBytes = new Uint8Array(
+                Uint8Array.from(atob(config.salt), c => c.charCodeAt(0))
+            );
+            masterKeyBytes = await deriveRawMasterKeyBytes(
+                encryptionPassword,
+                saltBytes,
+                config.argon2Params as import('@stenvault/shared/platform/crypto').Argon2Params,
+                config.masterKeyEncrypted
             );
 
             // Generate config ID

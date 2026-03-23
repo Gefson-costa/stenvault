@@ -99,7 +99,7 @@ export function SignatureKeysSection() {
         setPasswordModalOpen(true);
     }, []);
 
-    const executeWithMasterKey = useCallback(async (masterKey: CryptoKey, action: "generate" | "rotate") => {
+    const executeWithMasterKey = useCallback(async (masterKey: CryptoKey | import('@/hooks/masterKeyCrypto').MasterKeyBundle, action: "generate" | "rotate") => {
         setIsGenerating(true);
         try {
             await generateKeyPair(masterKey);

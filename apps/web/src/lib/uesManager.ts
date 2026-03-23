@@ -229,41 +229,33 @@ export function clearUES(): void {
  */
 export async function exportUESForServer(
     ues: Uint8Array,
-    masterKey: CryptoKey
+    masterKey: CryptoKey | { aesGcm: CryptoKey }
 ): Promise<UESExport> {
     try {
         const fingerprintHash = await getDeviceFingerprintHash();
 
-        // Export Master Key for AES-GCM encryption
-        const masterKeyBytes = await crypto.subtle.exportKey('raw', masterKey);
-
-        try {
-            // Import as AES-GCM key
-            const encryptionKey = await crypto.subtle.importKey(
-                'raw',
-                masterKeyBytes,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['encrypt']
-            );
-
-            // Encrypt UES
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const encrypted = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv: toArrayBuffer(iv) },
-                encryptionKey,
-                toArrayBuffer(ues)
-            );
-
-            return {
-                uesEncrypted: arrayBufferToBase64(encrypted),
-                uesIv: arrayBufferToBase64(toArrayBuffer(iv)),
-                deviceFingerprint: fingerprintHash,
-            };
-        } finally {
-            // Zero master key bytes after use
-            new Uint8Array(masterKeyBytes).fill(0);
+        // Use non-extractable AES-GCM key directly (MasterKeyBundle) or legacy CryptoKey
+        let encryptionKey: CryptoKey;
+        if ('aesGcm' in masterKey) {
+            encryptionKey = masterKey.aesGcm;
+        } else {
+            // Legacy path: CryptoKey passed directly — assume it's AES-GCM capable
+            encryptionKey = masterKey;
         }
+
+        // Encrypt UES
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const encrypted = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv: toArrayBuffer(iv) },
+            encryptionKey,
+            toArrayBuffer(ues)
+        );
+
+        return {
+            uesEncrypted: arrayBufferToBase64(encrypted),
+            uesIv: arrayBufferToBase64(toArrayBuffer(iv)),
+            deviceFingerprint: fingerprintHash,
+        };
     } catch (error) {
         debugError('[CRYPTO]', 'Failed to export UES for server', error);
         throw new Error('Failed to export UES');
@@ -280,23 +272,19 @@ export async function exportUESForServer(
  */
 export async function importUESFromServer(
     serverData: { uesEncrypted: string; uesIv: string },
-    masterKey: CryptoKey
+    masterKey: CryptoKey | { aesGcm: CryptoKey }
 ): Promise<Uint8Array> {
     try {
-        // Export Master Key for AES-GCM decryption
-        const masterKeyBytes = await crypto.subtle.exportKey('raw', masterKey);
+        // Use non-extractable AES-GCM key directly
+        let decryptionKey: CryptoKey;
+        if ('aesGcm' in masterKey) {
+            decryptionKey = masterKey.aesGcm;
+        } else {
+            decryptionKey = masterKey;
+        }
 
         let ues: Uint8Array;
-        try {
-            // Import as AES-GCM key
-            const decryptionKey = await crypto.subtle.importKey(
-                'raw',
-                masterKeyBytes,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['decrypt']
-            );
-
+        {
             // Decrypt UES
             const iv = base64ToUint8Array(serverData.uesIv);
             const encrypted = base64ToUint8Array(serverData.uesEncrypted);
@@ -308,9 +296,6 @@ export async function importUESFromServer(
             );
 
             ues = new Uint8Array(decrypted);
-        } finally {
-            // Zero master key bytes after use
-            new Uint8Array(masterKeyBytes).fill(0);
         }
 
         // Store locally

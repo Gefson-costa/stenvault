@@ -94,8 +94,8 @@ export default function DeviceApprovalModal({
             return;
         }
 
-        const masterKey = getCachedKey();
-        if (!masterKey) {
+        const bundle = getCachedKey();
+        if (!bundle) {
             toast.error('Vault is locked. Please unlock first.');
             return;
         }
@@ -108,7 +108,7 @@ export default function DeviceApprovalModal({
             // The pending device will receive these bytes via importUESFromServer()
             // and re-encrypt them with its own device fingerprint.
             const pendingDeviceUES = crypto.getRandomValues(new Uint8Array(32));
-            const exported = await exportUESForServer(pendingDeviceUES, masterKey);
+            const exported = await exportUESForServer(pendingDeviceUES, bundle);
 
             await approveMutation.mutateAsync({
                 pendingDeviceId: device.id,

@@ -16,6 +16,7 @@ import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { base64ToArrayBuffer, arrayBufferToBase64, toArrayBuffer } from '@/lib/platform';
 import { encryptLargeSecretKey, decryptLargeSecretKey } from '@/hooks/masterKeyCrypto';
+import type { MasterKeyBundle } from '@/hooks/masterKeyCrypto';
 import { getHybridSignatureProvider } from '@/lib/platform/webHybridSignatureProvider';
 import type {
   HybridSignaturePublicKey,
@@ -63,9 +64,9 @@ export interface UseSignatureKeysReturn {
   /** Whether hybrid signatures are available on this platform */
   isAvailable: boolean | null;
   /** Generate and store a new key pair */
-  generateKeyPair: (masterKey: CryptoKey) => Promise<boolean>;
+  generateKeyPair: (masterKey: CryptoKey | MasterKeyBundle) => Promise<boolean>;
   /** Get decrypted secret key for signing */
-  getSecretKey: (masterKey: CryptoKey) => Promise<HybridSignatureSecretKey>;
+  getSecretKey: (masterKey: CryptoKey | MasterKeyBundle) => Promise<HybridSignatureSecretKey>;
   /** Whether a mutation is in progress */
   isPending: boolean;
   /** Refetch key info */
@@ -165,8 +166,10 @@ export function useSignatureKeys(): UseSignatureKeysReturn {
 
   // Generate and store a new key pair
   const generateKeyPair = useCallback(
-    async (masterKey: CryptoKey): Promise<boolean> => {
+    async (masterKey: CryptoKey | MasterKeyBundle): Promise<boolean> => {
       try {
+        const aesGcm = masterKey instanceof CryptoKey ? masterKey : masterKey.aesGcm;
+
         // Check if hybrid signatures are available
         const available = await signatureProvider.isAvailable();
         if (!available) {
@@ -182,14 +185,9 @@ export function useSignatureKeys(): UseSignatureKeysReturn {
         };
         const fingerprint = await generateKeyFingerprint(keyPair.publicKey.classical, keyPair.publicKey.postQuantum);
 
-        // Encrypt secret keys with master key (AES-256-GCM, any-length data)
-        const ed25519SecretKeyData = keyPair.secretKey.classical;
-        const mldsa65SecretKeyData = keyPair.secretKey.postQuantum;
-
-        const mkBytes = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
-        const ed25519Encrypted = await encryptLargeSecretKey(ed25519SecretKeyData, mkBytes);
-        const mldsa65Encrypted = await encryptLargeSecretKey(mldsa65SecretKeyData, mkBytes);
-        mkBytes.fill(0); // Zero MK bytes
+        // Encrypt secret keys with non-extractable AES-GCM key
+        const ed25519Encrypted = await encryptLargeSecretKey(keyPair.secretKey.classical, aesGcm);
+        const mldsa65Encrypted = await encryptLargeSecretKey(keyPair.secretKey.postQuantum, aesGcm);
 
         // Store encrypted keys
         await storeMutation.mutateAsync({
@@ -212,31 +210,28 @@ export function useSignatureKeys(): UseSignatureKeysReturn {
 
   // Get decrypted secret key for signing
   const getSecretKey = useCallback(
-    async (masterKey: CryptoKey): Promise<HybridSignatureSecretKey> => {
+    async (masterKey: CryptoKey | MasterKeyBundle): Promise<HybridSignatureSecretKey> => {
       try {
+        const aesGcm = masterKey instanceof CryptoKey ? masterKey : masterKey.aesGcm;
+
         // Fetch encrypted secret keys from server
         const { ed25519SecretKeyEncrypted, mldsa65SecretKeyEncrypted } =
           await utils.hybridSignature.getSecretKey.fetch({});
 
-        // Decrypt with master key (AES-256-GCM)
-        const mkBytes = new Uint8Array(await crypto.subtle.exportKey('raw', masterKey));
-        try {
-          const ed25519SecretKey = await decryptLargeSecretKey(
-            new Uint8Array(base64ToArrayBuffer(ed25519SecretKeyEncrypted)),
-            mkBytes
-          );
-          const mldsa65SecretKey = await decryptLargeSecretKey(
-            new Uint8Array(base64ToArrayBuffer(mldsa65SecretKeyEncrypted)),
-            mkBytes
-          );
+        // Decrypt with non-extractable AES-GCM key
+        const ed25519SecretKey = await decryptLargeSecretKey(
+          new Uint8Array(base64ToArrayBuffer(ed25519SecretKeyEncrypted)),
+          aesGcm
+        );
+        const mldsa65SecretKey = await decryptLargeSecretKey(
+          new Uint8Array(base64ToArrayBuffer(mldsa65SecretKeyEncrypted)),
+          aesGcm
+        );
 
-          return {
-            classical: ed25519SecretKey,
-            postQuantum: mldsa65SecretKey,
-          };
-        } finally {
-          mkBytes.fill(0); // Zero MK bytes
-        }
+        return {
+          classical: ed25519SecretKey,
+          postQuantum: mldsa65SecretKey,
+        };
       } catch (error) {
         // Log error for debugging
         console.error('[useSignatureKeys] Failed to get secret key:', error);
