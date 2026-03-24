@@ -32,15 +32,7 @@ vi.mock('./components/EncryptionPanel', () => ({
   )),
 }));
 
-vi.mock('./components/EncryptionIndicator', () => ({
-  EncryptionIndicator: vi.fn(({ encryptionState }) => (
-    encryptionState.isEncrypting ? (
-      <div data-testid="encryption-indicator">
-        Encrypting: {encryptionState.progress}%
-      </div>
-    ) : null
-  )),
-}));
+// EncryptionIndicator was removed — encryption status is handled within EncryptionPanel
 
 vi.mock('./components/DropZone', () => ({
   DropZone: vi.fn(({ isDragging, maxSizeMB, onClick }) => (
@@ -204,21 +196,10 @@ describe('FileUploader', () => {
   });
 
   describe('Encryption State Integration', () => {
-    it('should show encryption indicator when encrypting', () => {
-      vi.spyOn(useFileUploadModule, 'useFileUpload').mockReturnValue({
-        ...mockUseFileUpload,
-        encryptionState: {
-          isEncrypting: true,
-          encryptingCount: 1,
-          totalCount: 3,
-          progress: 45,
-        },
-      });
-
+    it('should always show encryption panel regardless of upload state', () => {
       render(<FileUploader folderId={1} />);
 
-      expect(screen.getByTestId('encryption-indicator')).toBeInTheDocument();
-      expect(screen.getByText(/encrypting: 45%/i)).toBeInTheDocument();
+      expect(screen.getByTestId('encryption-panel')).toBeInTheDocument();
     });
   });
 

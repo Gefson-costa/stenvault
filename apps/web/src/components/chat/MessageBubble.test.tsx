@@ -399,7 +399,7 @@ describe('MessageBubble', () => {
         <MessageBubble message={baseMessage} isOwn={true} />
       );
 
-      const bubble = container.querySelector('[class*="from-indigo-600"]');
+      const bubble = container.querySelector('[class*="bg-primary"]');
       expect(bubble).toBeInTheDocument();
     });
 
@@ -408,7 +408,7 @@ describe('MessageBubble', () => {
         <MessageBubble message={baseMessage} isOwn={false} />
       );
 
-      const bubble = container.querySelector('[class*="bg-slate-100"]');
+      const bubble = container.querySelector('[class*="bg-muted"]');
       expect(bubble).toBeInTheDocument();
     });
   });

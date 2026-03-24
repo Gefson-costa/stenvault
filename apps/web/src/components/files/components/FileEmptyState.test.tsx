@@ -27,13 +27,13 @@ describe('FileEmptyState', () => {
   it('should render empty state message', () => {
     render(<FileEmptyState />);
 
-    expect(screen.getByText(/this folder is waiting/i)).toBeInTheDocument();
+    expect(screen.getByText(/no files yet/i)).toBeInTheDocument();
   });
 
   it('should render description text', () => {
     render(<FileEmptyState />);
 
-    expect(screen.getByText(/this space is ready/i)).toBeInTheDocument();
+    expect(screen.getByText(/drop files here or click upload to get started/i)).toBeInTheDocument();
   });
 
   it('should render upload button', () => {
