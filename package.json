@@ -1,19 +1,26 @@
 {
-    "name": "cloudvault-client",
+    "name": "stenvault",
     "version": "0.0.0",
     "private": true,
-    "description": "CloudVault — Zero-knowledge encrypted cloud storage client",
+    "description": "StenVault — Zero-knowledge encrypted cloud storage client",
     "license": "GPL-3.0-only",
     "scripts": {
-        "dev": "pnpm --filter @cloudvault/web dev",
-        "build": "pnpm --filter @cloudvault/web build",
-        "typecheck": "pnpm --filter @cloudvault/web typecheck",
-        "test": "pnpm --filter @cloudvault/web test",
+        "dev": "pnpm --filter @stenvault/web dev",
+        "build": "pnpm --filter @stenvault/web build",
+        "typecheck": "pnpm --filter @stenvault/web typecheck",
+        "test": "vitest run",
         "format": "prettier --write ."
     },
     "engines": {
         "node": ">=20.0.0",
         "pnpm": ">=10.16.0"
     },
-    "packageManager": "pnpm@10.32.1"
+    "packageManager": "pnpm@10.32.1",
+    "devDependencies": {
+        "@testing-library/react": "^16.3.2",
+        "@testing-library/user-event": "^14.6.1",
+        "@vitest/coverage-v8": "^4.1.0",
+        "happy-dom": "^20.8.4",
+        "vitest": "^4.1.0"
+    }
 }

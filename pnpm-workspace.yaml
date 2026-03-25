@@ -6,11 +6,29 @@ packages:
 # pnpm 10 defaults this to true; explicit for clarity (Golden Rule 10)
 strictDepBuilds: true
 
+# Allow build scripts only for packages that need native compilation
+allowBuilds:
+  esbuild: true
+  '@swc/core': true
+  '@firebase/util': false
+  protobufjs: false
+
 # Supply chain security (Golden Rule 10)
 # Fail install if a package's trust level dropped vs previous versions
 # (e.g. previously published with provenance, now published manually)
 trustPolicy: no-downgrade
 
+# Trust policy exceptions — packages with valid provenance history that published
+# minor/patch versions without attestation (common for DefinitelyTyped, npm core deps)
+trustPolicyExclude:
+  - 'undici-types'
+  - 'semver'
+  - '@noble/secp256k1'
+
 # Block packages published less than 3 days ago — most supply chain attacks
 # are detected within hours; this gives the community time to flag them
 minimumReleaseAge: 4320 # minutes = 3 days
+
+# Our own WASM package — exempt from release age check
+minimumReleaseAgeExclude:
+  - '@stenvault/pqc-wasm'

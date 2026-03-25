@@ -297,7 +297,7 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
          */
         refresh: import("@trpc/server").TRPCMutationProcedure<{
             input: {
-                refreshToken: string;
+                refreshToken?: string | undefined;
             };
             output: {
                 user: Omit<{
@@ -781,6 +781,16 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
             output: {
                 success: boolean;
                 connections: {
+                    lastMessage: {
+                        id: number;
+                        fromUserId: number;
+                        toUserId: number;
+                        content: string | null;
+                        messageType: string;
+                        isEncrypted: boolean;
+                        createdAt: Date;
+                    } | null;
+                    unreadCount: number;
                     id: number;
                     userId: number;
                     connectedUserId: number;
@@ -1053,6 +1063,74 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
             };
             output: {
                 url: string;
+            };
+            meta: object;
+        }>;
+        initiateChannel: import("@trpc/server").TRPCMutationProcedure<{
+            input: {
+                peerUserId: number;
+                kemCiphertext: string;
+                salt: string;
+                initiatorX25519Public: string;
+                wrappedSecret: string;
+                keyVersion?: number | undefined;
+            };
+            output: {
+                channelId: number;
+                keyVersion: number;
+                alreadyActive: boolean;
+            };
+            meta: object;
+        }>;
+        completeChannel: import("@trpc/server").TRPCMutationProcedure<{
+            input: {
+                peerUserId: number;
+                wrappedSecret: string;
+            };
+            output: {
+                success: boolean;
+                keyVersion: number;
+            };
+            meta: object;
+        }>;
+        getChannelSecret: import("@trpc/server").TRPCQueryProcedure<{
+            input: {
+                peerUserId: number;
+                keyVersion?: number | undefined;
+            };
+            output: {
+                status: string;
+                keyVersion: number;
+                wrappedSecret: string | null;
+                initiatedBy: number;
+                kemCiphertext?: string | null;
+                agreementSalt?: string | null;
+                initiatorX25519Public?: string | null;
+            } | null;
+            meta: object;
+        }>;
+        getChannelStatus: import("@trpc/server").TRPCQueryProcedure<{
+            input: {
+                peerUserId: number;
+            };
+            output: {
+                status: "active" | "pending" | "rotated";
+                keyVersion: number;
+                initiatedBy: number;
+            } | null;
+            meta: object;
+        }>;
+        rotateChannel: import("@trpc/server").TRPCMutationProcedure<{
+            input: {
+                peerUserId: number;
+                kemCiphertext: string;
+                salt: string;
+                initiatorX25519Public: string;
+                wrappedSecret: string;
+            };
+            output: {
+                channelId: number;
+                keyVersion: number;
             };
             meta: object;
         }>;
@@ -1685,7 +1763,6 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
             output: {
                 totalFiles: number;
                 v4Count: number;
-                v3Count: number;
                 pqcPercentage: number;
             };
             meta: object;
@@ -3460,6 +3537,16 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
                 success: boolean;
                 message: string;
                 shamirSharesInvalidated: boolean;
+            };
+            meta: object;
+        }>;
+        regenerateRecoveryCodes: import("@trpc/server").TRPCMutationProcedure<{
+            input: {
+                newRecoveryCodes: string[];
+            };
+            output: {
+                success: boolean;
+                message: string;
             };
             meta: object;
         }>;
