@@ -258,18 +258,22 @@ export function useDirectDownload() {
 
                 if (opId) opStore.updateProgress(opId, { status: 'decrypting', progress: 30 });
 
+                if (!file.createdAt) {
+                    throw new Error('Missing createdAt — cannot derive file key');
+                }
+
                 const derivedKey = isOrgFile
                     ? await (async () => {
                           await unlockOrgVault(organizationId!);
                           return deriveOrgFileKey(
                               organizationId!,
                               file.id.toString(),
-                              file.createdAt?.getTime() ?? Date.now(),
+                              file.createdAt!.getTime(),
                           );
                       })()
                     : await deriveFileKey(
                           file.id.toString(),
-                          file.createdAt?.getTime() ?? Date.now(),
+                          file.createdAt.getTime(),
                       );
 
                 if (opId) opStore.updateProgress(opId, { progress: 50 });

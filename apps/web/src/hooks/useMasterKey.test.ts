@@ -179,6 +179,7 @@ vi.mock('@/lib/uesManager', () => ({
 const mockGetHasActiveOperations = vi.fn().mockReturnValue(false);
 vi.mock('@/stores/operationStore', () => ({
     getHasActiveOperations: (...args: unknown[]) => mockGetHasActiveOperations(...args),
+    getLastActiveOperationStartTime: vi.fn(() => null),
 }));
 
 // Mock masterKeyCrypto

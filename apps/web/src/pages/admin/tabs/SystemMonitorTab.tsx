@@ -4,7 +4,7 @@
  */
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
-import { getAccessToken } from "@/lib/auth/tokenStorage";
+
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Terminal,
@@ -86,9 +86,7 @@ export function SystemMonitorTab() {
 
         const adminSocket = io(`${wsUrl}/admin/monitor`, {
             path: "/socket.io",
-            auth: {
-                token: getAccessToken(),
-            }
+            withCredentials: true,
         });
 
         adminSocket.on("connect", () => {

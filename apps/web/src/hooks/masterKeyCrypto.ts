@@ -164,7 +164,7 @@ export async function deriveArgon2Key(
       'raw',
       toArrayBuffer(result.key),
       { name: 'AES-KW', length: 256 },
-      true,
+      false,
       ['wrapKey', 'unwrapKey']
     );
   } finally {

@@ -6,7 +6,7 @@
  */
 import React, { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getAccessToken } from "@/lib/auth/tokenStorage";
+
 import { motion } from "framer-motion";
 import {
     RefreshCw,
@@ -53,11 +53,8 @@ const m3Transition = {
 };
 
 async function fetchDbCheck(): Promise<DbCheckResponse> {
-    const token = getAccessToken();
     const response = await fetch("/api/db-check", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
     });
 
     if (!response.ok) {

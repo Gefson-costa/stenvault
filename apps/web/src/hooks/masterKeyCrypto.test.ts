@@ -228,7 +228,7 @@ describe('masterKeyCrypto', () => {
             expect(mockDeriveKey).toHaveBeenCalledWith('my-password', salt, params);
         });
 
-        it('should produce extractable key', async () => {
+        it('should produce non-extractable key (XSS cannot exportKey)', async () => {
             const fakeKek = crypto.getRandomValues(new Uint8Array(32));
             mockDeriveKey.mockResolvedValueOnce({ key: fakeKek });
 
@@ -237,7 +237,7 @@ describe('masterKeyCrypto', () => {
 
             const key = await deriveArgon2Key('password', salt, params);
 
-            expect(key.extractable).toBe(true);
+            expect(key.extractable).toBe(false);
         });
     });
 
