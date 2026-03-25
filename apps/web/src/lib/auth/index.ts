@@ -14,6 +14,8 @@ export {
     clearAllTokens,
     hasValidSession,
     refreshSession,
+    scheduleProactiveRefresh,
+    cancelProactiveRefresh,
     type TokenPair,
 } from './tokenManager';
 

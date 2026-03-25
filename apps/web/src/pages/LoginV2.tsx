@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { trpc } from '@/lib/trpc';
 import { startLogin, finishLogin } from '@/lib/opaqueClient';
+import { scheduleProactiveRefresh } from '@/lib/auth';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 import { ArrowRight, ArrowLeft, ShieldCheck } from 'lucide-react';
@@ -45,9 +46,10 @@ export default function LoginV2() {
         }
     }, [currentUser, showOtpInput, setLocation]);
 
-    /** Complete login: server sets HttpOnly cookies, just redirect */
+    /** Complete login: server sets HttpOnly cookies, start proactive refresh, redirect */
     const completeLogin = async (_result: any) => {
         toast.success('Login successful');
+        scheduleProactiveRefresh();
         await utils.auth.me.invalidate();
         setLocation('/home');
     };

@@ -12,7 +12,8 @@ import { InterfaceProvider } from "./contexts/InterfaceContext";
 import { OrganizationProvider } from "./contexts/OrganizationContext";
 import { EmailVerificationProvider } from "./components/email-verification";
 import { trpc } from "@/lib/trpc";
-import { lazy, Suspense } from "react";
+import { scheduleProactiveRefresh, cancelProactiveRefresh } from "@/lib/auth";
+import { lazy, Suspense, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
 // Route Guards
@@ -222,6 +223,14 @@ function AppWithUser() {
     retry: false,
     staleTime: Infinity,
   });
+
+  // Start proactive token refresh on page load if already authenticated
+  useEffect(() => {
+    if (user) {
+      scheduleProactiveRefresh();
+    }
+    return () => cancelProactiveRefresh();
+  }, [!!user]);
 
   return (
     <OrganizationProvider>

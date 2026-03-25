@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
 import { useCallback, useEffect, useMemo } from "react";
-import { clearAllTokens } from "@/lib/auth";
+import { clearAllTokens, cancelProactiveRefresh } from "@/lib/auth";
 import { clearMasterKeyCache, clearDeviceWrappedMK } from "@/hooks/useMasterKey";
 
 type UseAuthOptions = {
@@ -39,6 +39,9 @@ export function useAuth(options?: UseAuthOptions) {
         console.error("Logout error:", error);
       }
     } finally {
+      // Cancel proactive token refresh
+      cancelProactiveRefresh();
+
       // Clear master key and derived keys from memory
       clearMasterKeyCache();
       clearDeviceWrappedMK();

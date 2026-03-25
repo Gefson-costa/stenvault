@@ -63,8 +63,8 @@ export async function refreshCSRFToken(): Promise<void> {
   await getCSRFToken();
 }
 
-/** Track whether a silent refresh is already in progress */
-let isRefreshingSession = false;
+/** Shared refresh promise so concurrent 401s wait for the same refresh */
+let refreshPromise: Promise<boolean> | null = null;
 
 const redirectToLoginIfUnauthorized = async (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
@@ -78,23 +78,19 @@ const redirectToLoginIfUnauthorized = async (error: unknown) => {
     const publicPrefixes = ['/send', '/s/', '/landing', '/pricing', '/recover', '/p2p/', '/ops-deck', '/terms', '/privacy', '/auth/'];
     if (publicPrefixes.some(p => path === p || path.startsWith(p))) return;
 
-    // Try silent refresh before logging out (access cookie expired but refresh cookie may be valid)
-    if (!isRefreshingSession) {
-      isRefreshingSession = true;
-      try {
-        const refreshed = await refreshSession();
-        if (refreshed) {
-          // Refresh succeeded — new access cookie set by server.
-          // Also refresh CSRF token to stay in sync with the new session.
-          await refreshCSRFToken().catch(() => {});
-          queryClient.invalidateQueries();
-          return;
-        }
-      } catch {
-        // Refresh failed — fall through to logout
-      } finally {
-        isRefreshingSession = false;
-      }
+    // All concurrent 401s share the same refresh attempt
+    if (!refreshPromise) {
+      refreshPromise = refreshSession()
+        .catch(() => false)
+        .finally(() => { refreshPromise = null; });
+    }
+
+    const refreshed = await refreshPromise;
+
+    if (refreshed) {
+      await refreshCSRFToken().catch(() => {});
+      queryClient.invalidateQueries();
+      return;
     }
 
     clearAllTokens();

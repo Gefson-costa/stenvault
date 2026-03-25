@@ -5,10 +5,21 @@
  * The server sets/clears cookies; the frontend just needs to call the
  * refresh endpoint when a 401 occurs.
  *
- * @version 2.0.0
+ * Proactive refresh: schedules a silent refresh before the access token
+ * expires, so 401s rarely happen during normal usage.
+ *
+ * @version 3.0.0
  */
 
 import { clearTokens, type TokenPair } from './tokenStorage';
+
+// ============ Config ============
+
+/** Access token TTL on the server (must match AUTH_STANDALONE ACCESS_TOKEN_EXPIRY) */
+const ACCESS_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+/** Refresh proactively at 80% of TTL (i.e. 24 min into a 30 min token) */
+const PROACTIVE_REFRESH_MS = ACCESS_TOKEN_TTL_MS * 0.8;
 
 // ============ State ============
 
@@ -17,6 +28,9 @@ let isRefreshing = false;
 
 /** Queue of callbacks waiting for refresh to complete */
 let refreshSubscribers: Array<(success: boolean) => void> = [];
+
+/** Proactive refresh timer */
+let proactiveTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ============ Internal Functions ============
 
@@ -84,6 +98,7 @@ export async function getValidAccessToken(): Promise<string | null> {
 /**
  * Attempt to refresh the session. Returns true if refresh succeeded.
  * The server sets new HttpOnly cookies in the response.
+ * On success, schedules the next proactive refresh automatically.
  */
 export async function refreshSession(): Promise<boolean> {
     if (isRefreshing) {
@@ -95,19 +110,48 @@ export async function refreshSession(): Promise<boolean> {
     try {
         const success = await callRefreshEndpoint();
 
-        if (!success) {
-            clearTokens(); // Clear legacy keys
+        if (success) {
+            scheduleProactiveRefresh();
+        } else {
+            cancelProactiveRefresh();
+            clearTokens();
         }
 
         notifySubscribers(success);
         return success;
     } catch (error) {
         console.error('[TokenManager] Refresh error:', error);
+        cancelProactiveRefresh();
         clearTokens();
         notifySubscribers(false);
         return false;
     } finally {
         isRefreshing = false;
+    }
+}
+
+/**
+ * Schedule a silent refresh before the access token expires.
+ * Called after login and after every successful refresh.
+ */
+export function scheduleProactiveRefresh(): void {
+    cancelProactiveRefresh();
+    proactiveTimer = setTimeout(async () => {
+        proactiveTimer = null;
+        const ok = await refreshSession();
+        if (!ok) {
+            console.warn('[TokenManager] Proactive refresh failed — will retry on next 401');
+        }
+    }, PROACTIVE_REFRESH_MS);
+}
+
+/**
+ * Cancel the proactive refresh timer (on logout or failed refresh).
+ */
+export function cancelProactiveRefresh(): void {
+    if (proactiveTimer) {
+        clearTimeout(proactiveTimer);
+        proactiveTimer = null;
     }
 }
 
