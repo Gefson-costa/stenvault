@@ -54,6 +54,7 @@ import { useMasterKey } from "@/hooks/useMasterKey";
 import { toast } from "sonner";
 import { AlertTriangle, CreditCard, Clock, Users } from "lucide-react";
 import { formatBytes } from "@stenvault/shared";
+import { useBeforeUnloadWarning } from "@/stores/operationStore";
 
 // Menu items configuration
 // Note: Some items are conditionally shown based on feature flags
@@ -283,6 +284,7 @@ function DesktopLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [unlockModalOpen, setUnlockModalOpen] = useState(false);
   const { isUnlocked: vaultUnlocked, clearCache: lockVault } = useMasterKey();
+  useBeforeUnloadWarning();
 
   // Check if P2P feature is enabled (server-side toggle)
   const { data: p2pEnabled } = trpc.p2p.isEnabled.useQuery(undefined, {

@@ -6,8 +6,9 @@
  * v3 (Master Key) and v4 (Hybrid PQC) files auto-decrypt when vault is unlocked.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { trpc } from '@/lib/trpc';
+import { useOperationStore } from '@/stores/operationStore';
 import { toast } from 'sonner';
 import { Loader2, AlertTriangle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -167,6 +168,29 @@ export function FilePreviewModal({ file, open, onClose, mode = 'preview' }: File
         encryptionVersion,
         signatureInfo,
     });
+
+    // ===== ACTIVE PREVIEW OPERATION (defers vault lock while viewing) =====
+    const opStore = useOperationStore();
+    const previewOpIdRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (open && decryption.state.decryptedBlobUrl && !previewOpIdRef.current) {
+            previewOpIdRef.current = opStore.addOperation({
+                type: 'preview',
+                filename: displayFilename || 'preview',
+                status: 'downloading', // any non-terminal status keeps it "active"
+            });
+        }
+        if (!open && previewOpIdRef.current) {
+            opStore.removeOperation(previewOpIdRef.current);
+            previewOpIdRef.current = null;
+        }
+        return () => {
+            if (previewOpIdRef.current) {
+                opStore.removeOperation(previewOpIdRef.current);
+                previewOpIdRef.current = null;
+            }
+        };
+    }, [open, !!decryption.state.decryptedBlobUrl]);
 
     // ===== EFFECTIVE FILE TYPE =====
     // For files stored as 'other' (e.g. existing encrypted files before fix),

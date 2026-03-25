@@ -11,6 +11,7 @@ import {
   Loader2,
   Lock,
   Shield,
+  Eye,
 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { CircularProgress } from '@/components/ui/progress';
@@ -59,12 +60,10 @@ function StatusIcon({ status }: { status: OperationStatus }) {
   }
 }
 
-function TypeIcon({ type }: { type: 'upload' | 'download' }) {
-  return type === 'upload' ? (
-    <Shield className="h-3.5 w-3.5 text-muted-foreground" />
-  ) : (
-    <Download className="h-3.5 w-3.5 text-muted-foreground" />
-  );
+function TypeIcon({ type }: { type: 'upload' | 'download' | 'preview' }) {
+  if (type === 'upload') return <Shield className="h-3.5 w-3.5 text-muted-foreground" />;
+  if (type === 'preview') return <Eye className="h-3.5 w-3.5 text-muted-foreground" />;
+  return <Download className="h-3.5 w-3.5 text-muted-foreground" />;
 }
 
 // ============ Operation Row ============

@@ -634,9 +634,9 @@ describe('useMasterKey', () => {
             // Simulate active operations when timer fires
             mockGetHasActiveOperations.mockReturnValue(true);
 
-            // Advance to 15 minutes (normal expiry time)
+            // Advance to 30 minutes (normal expiry time)
             act(() => {
-                vi.advanceTimersByTime(15 * 60 * 1000);
+                vi.advanceTimersByTime(30 * 60 * 1000);
             });
 
             // Cache should still be valid because operations are active
@@ -655,15 +655,15 @@ describe('useMasterKey', () => {
             // No active operations
             mockGetHasActiveOperations.mockReturnValue(false);
 
-            // Advance to 15 minutes
+            // Advance to 30 minutes
             act(() => {
-                vi.advanceTimersByTime(15 * 60 * 1000);
+                vi.advanceTimersByTime(30 * 60 * 1000);
             });
 
             expect(result.current.isUnlocked).toBe(false);
         });
 
-        it('enforces hard cap at 30 minutes even with active operations', async () => {
+        it('keeps cache alive indefinitely while operations are active', async () => {
             const { result } = renderHook(() => useMasterKey());
 
             await act(async () => {
@@ -675,9 +675,19 @@ describe('useMasterKey', () => {
             // Operations stay active the entire time
             mockGetHasActiveOperations.mockReturnValue(true);
 
-            // Advance to 30 minutes (hard cap)
+            // Advance well past the default timeout (2 hours)
             act(() => {
-                vi.advanceTimersByTime(30 * 60 * 1000);
+                vi.advanceTimersByTime(2 * 60 * 60 * 1000);
+            });
+
+            // Cache is still alive because operations are active
+            expect(result.current.isUnlocked).toBe(true);
+
+            // Operations complete — next check should expire
+            mockGetHasActiveOperations.mockReturnValue(false);
+
+            act(() => {
+                vi.advanceTimersByTime(10_000); // DEFERRAL_CHECK_MS
             });
 
             expect(result.current.isUnlocked).toBe(false);

@@ -26,7 +26,7 @@ import { generateRecoveryCodes } from '@/lib/recoveryCodeUtils';
 import { clearThumbnailCache } from '@/hooks/useThumbnailDecryption';
 import { clearAllOrgKeyCaches } from '@/hooks/useOrgMasterKey';
 import { debugLog, debugError } from '@/lib/debugLogger';
-import { getHasActiveOperations, getLastActiveOperationStartTime } from '@/stores/operationStore';
+import { getHasActiveOperations } from '@/stores/operationStore';
 import { loadUES, deriveDeviceKEK as deriveDeviceKEKFromUES, getStoredFingerprintHash } from '@/lib/uesManager';
 import {
   toArrayBuffer,
@@ -55,10 +55,8 @@ import type { DerivedFileKeyWithBytes } from './masterKeyCrypto';
 
 // ============ Session Cache (Module-level Singleton) ============
 
-/** Default cache timeout: 15 minutes */
-const DEFAULT_CACHE_TIMEOUT_MS = 15 * 60 * 1000;
-/** Hard cap: cache cannot live longer than 30 minutes even with deferrals */
-const MAX_CACHE_LIFETIME_MS = 30 * 60 * 1000;
+/** Default cache timeout: 30 minutes (aligned with access token TTL) */
+const DEFAULT_CACHE_TIMEOUT_MS = 30 * 60 * 1000;
 /** Re-check interval during deferral */
 const DEFERRAL_CHECK_MS = 10_000;
 
@@ -170,20 +168,12 @@ function cacheMasterKey(bundle: MasterKeyBundle, userId: number): void {
 
     const ageMs = Date.now() - masterKeyCache.derivedAt;
 
-    // Defer if operations are active AND hard cap not reached
-    if (getHasActiveOperations() && ageMs < MAX_CACHE_LIFETIME_MS) {
-      // Calculate smart deferral: at least DEFERRAL_CHECK_MS, but extend to
-      // cover the latest active operation start + DEFAULT_CACHE_TIMEOUT_MS
-      const lastOpStart = getLastActiveOperationStartTime();
-      let deferMs = DEFERRAL_CHECK_MS;
-      if (lastOpStart) {
-        const opBasedExpiry = lastOpStart + DEFAULT_CACHE_TIMEOUT_MS;
-        const hardCapExpiry = masterKeyCache.derivedAt + MAX_CACHE_LIFETIME_MS;
-        const targetExpiry = Math.min(opBasedExpiry, hardCapExpiry);
-        deferMs = Math.max(DEFERRAL_CHECK_MS, targetExpiry - Date.now());
-      }
-      debugLog('[MK]', `Cache expiry deferred ${Math.round(deferMs / 1000)}s — operations in progress (age ${Math.round(ageMs / 1000)}s)`);
-      cacheExpirationTimer = setTimeout(onCacheExpiry, deferMs);
+    // Defer indefinitely while operations are active (upload, download, preview).
+    // The MK is needed to encrypt/decrypt — killing it mid-operation causes data loss.
+    // Hard cap removed: operations drive the lifetime, not an arbitrary clock.
+    if (getHasActiveOperations()) {
+      debugLog('[MK]', `Cache expiry deferred — operations in progress (age ${Math.round(ageMs / 1000)}s)`);
+      cacheExpirationTimer = setTimeout(onCacheExpiry, DEFERRAL_CHECK_MS);
       return;
     }
 

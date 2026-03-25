@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useEffect } from 'react';
 
 /**
  * Background Operations Store
@@ -10,7 +11,7 @@ import { create } from 'zustand';
 
 // ============ Types ============
 
-export type OperationType = 'upload' | 'download';
+export type OperationType = 'upload' | 'download' | 'preview';
 
 export type OperationStatus =
   | 'pending'
@@ -155,6 +156,20 @@ export function getHasActiveOperations(): boolean {
   return useOperationStore.getState().operations.some(
     (op) => !TERMINAL_STATUSES.has(op.status),
   );
+}
+
+/**
+ * Hook: warn before closing/navigating away while operations are active.
+ * Mount once in the app shell (DashboardLayout or AuthenticatedShell).
+ */
+export function useBeforeUnloadWarning(): void {
+  const hasActive = useHasActiveOperations();
+  useEffect(() => {
+    if (!hasActive) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasActive]);
 }
 
 /** Get the most recent createdAt among active (non-terminal) operations */
