@@ -49,7 +49,7 @@ export interface ShareFileResult {
  */
 export function useChatFileShare() {
     const queryClient = useQueryClient();
-    const { hasHybridKeyPair, isUnlocked, deriveFileKeyWithBytes, getUnlockedHybridSecretKey } = useMasterKey();
+    const { hasHybridKeyPair, isUnlocked, getUnlockedHybridSecretKey } = useMasterKey();
     const { getCachedHybridPublicKey } = useCryptoStore();
     const [isSharing, setIsSharing] = useState(false);
     const utils = trpc.useUtils();
@@ -151,48 +151,26 @@ export function useChatFileShare() {
                 } as HybridPublicKeySerialized);
 
                 // 3. Get file's encryption key
-                // Priority: secure storage → V4 CVEF header extraction → V3 Master Key derivation
+                // Priority: secure storage → V4 CVEF header extraction
                 let fileKeyBytes = await getFileEncryptionKey(fileId);
                 let zeroExtractedKey: (() => void) | null = null;
 
                 if (!fileKeyBytes) {
-                    debugLog('[ChatFileShare]', `Key not in storage for file ${fileId}, trying V4 extraction`);
+                    debugLog('[ChatFileShare]', `Key not in storage for file ${fileId}, extracting from CVEF header`);
 
-                    // Try V4: extract file key from CVEF header (same as ShareFileModal / useDirectDownload)
-                    try {
-                        const hybridSecretKey = await getUnlockedHybridSecretKey();
-                        if (hybridSecretKey) {
-                            const { url: presignedUrl } = await utils.files.getDownloadUrl.fetch({ fileId });
-                            const extracted = await extractV4FileKey(presignedUrl, hybridSecretKey);
-                            fileKeyBytes = extracted.fileKeyBytes.buffer.slice(
-                                extracted.fileKeyBytes.byteOffset,
-                                extracted.fileKeyBytes.byteOffset + extracted.fileKeyBytes.byteLength,
-                            ) as ArrayBuffer;
-                            zeroExtractedKey = extracted.zeroBytes;
-                            debugLog('[ChatFileShare]', `Extracted V4 file key for file ${fileId}`);
-                        }
-                    } catch (v4Error) {
-                        debugLog('[ChatFileShare]', `V4 extraction failed for file ${fileId}, trying V3 derivation`);
+                    const hybridSecretKey = await getUnlockedHybridSecretKey();
+                    if (!hybridSecretKey) {
+                        throw new Error('Hybrid keys not available. Please unlock your vault and try again.');
                     }
-                }
 
-                if (!fileKeyBytes) {
-                    // Fallback V3: derive from Master Key via HKDF
-                    try {
-                        const fileDetails = await utils.files.getById.fetch({ fileId });
-                        if (fileDetails?.createdAt) {
-                            const timestamp = new Date(fileDetails.createdAt).getTime();
-                            const derived = await deriveFileKeyWithBytes(fileId.toString(), timestamp);
-                            fileKeyBytes = derived.keyBytes.buffer as ArrayBuffer;
-                            debugLog('[ChatFileShare]', `Derived V3 file key for file ${fileId}`);
-                        }
-                    } catch (deriveError) {
-                        console.warn('[ChatFileShare] V3 derivation failed:', deriveError);
-                    }
-                }
-
-                if (!fileKeyBytes) {
-                    throw new Error("Could not obtain file encryption key. Please unlock your vault and try again.");
+                    const { url: presignedUrl } = await utils.files.getDownloadUrl.fetch({ fileId });
+                    const extracted = await extractV4FileKey(presignedUrl, hybridSecretKey);
+                    fileKeyBytes = extracted.fileKeyBytes.buffer.slice(
+                        extracted.fileKeyBytes.byteOffset,
+                        extracted.fileKeyBytes.byteOffset + extracted.fileKeyBytes.byteLength,
+                    ) as ArrayBuffer;
+                    zeroExtractedKey = extracted.zeroBytes;
+                    debugLog('[ChatFileShare]', `Extracted V4 file key for file ${fileId}`);
                 }
 
                 // 4. Re-encrypt file key for recipient using hybrid KEM
@@ -240,7 +218,7 @@ export function useChatFileShare() {
                 setIsSharing(false);
             }
         },
-        [hasHybridKeyPair, isUnlocked, getCachedHybridPublicKey, getFileEncryptionKey, getUnlockedHybridSecretKey, deriveFileKeyWithBytes, shareFileMutation, utils]
+        [hasHybridKeyPair, isUnlocked, getCachedHybridPublicKey, getFileEncryptionKey, getUnlockedHybridSecretKey, shareFileMutation, utils]
     );
 
     /**
