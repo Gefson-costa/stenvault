@@ -109,7 +109,12 @@ export function useFileUpload({
     const { data: multipartConfig } = trpc.files.getMultipartConfig.useQuery();
     const getUploadUrl = trpc.files.getUploadUrl.useMutation();
     const checkDuplicate = trpc.files.checkDuplicate.useMutation();
-    const confirmUpload = trpc.files.confirmUpload.useMutation();
+    const confirmUpload = trpc.files.confirmUpload.useMutation({
+        onSuccess: () => {
+            trpcUtils.files.list.invalidate();
+            trpcUtils.files.getStorageStats.invalidate();
+        },
+    });
     const cancelUpload = trpc.files.cancelUpload.useMutation({
         onSuccess: () => {
             // Invalidate file list to remove ghost entries after cleanup
@@ -120,7 +125,12 @@ export function useFileUpload({
     const getThumbnailUploadUrl = trpc.files.getThumbnailUploadUrl.useMutation(); // Phase 7.2
     const initiateMultipart = trpc.files.initiateMultipartUpload.useMutation();
     const getPartUrl = trpc.files.getUploadPartUrl.useMutation();
-    const completeMultipart = trpc.files.completeMultipartUpload.useMutation();
+    const completeMultipart = trpc.files.completeMultipartUpload.useMutation({
+        onSuccess: () => {
+            trpcUtils.files.list.invalidate();
+            trpcUtils.files.getStorageStats.invalidate();
+        },
+    });
     const abortMultipart = trpc.files.abortMultipartUpload.useMutation();
 
     // ===== SERVER INFO REF (for cleanup on cancel) =====
