@@ -6,7 +6,7 @@ This repository is the open-source web client. The backend is proprietary (open-
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
-[stenvault.app](https://stenvault.app) · [Whitepaper](https://github.com/Gefson-costa/stenvault/blob/main/WHITEPAPER.md) · [Audit repo](https://github.com/Gefson-costa/stenvault-audit) · [RAG integration](https://github.com/Gefson-costa/stenvault-rag)
+[stenvault.app](https://stenvault.app) · [Security Whitepaper](https://github.com/Gefson-costa/stenvault/blob/main/SECURITY_WHITEPAPER.md) · [Audit repo](https://github.com/Gefson-costa/stenvault-audit) · [RAG integration](https://github.com/Gefson-costa/stenvault-rag)
 
 ![StenVault vault interface](docs/assets/screenshot.png)
 
@@ -22,7 +22,7 @@ StenVault assumes the server is untrusted. A compromised server, a malicious ope
 
 The post-quantum layer (V4) additionally protects against harvest-now-decrypt-later attacks targeting files encrypted today.
 
-For full cryptographic flows, database schemas, and architectural decisions, see the [whitepaper](https://github.com/Gefson-costa/stenvault/blob/main/WHITEPAPER.md).
+For full cryptographic flows, database schemas, and architectural decisions, see the [security whitepaper](https://github.com/Gefson-costa/stenvault/blob/main/SECURITY_WHITEPAPER.md).
 
 ## Cryptography
 
@@ -36,7 +36,7 @@ NIST finalized FIPS 203 (ML-KEM) and FIPS 204 (ML-DSA) in August 2024. This clie
 | File encryption | AES-256-GCM | — | Content encryption |
 | Key derivation | Argon2id (47 MiB, OWASP 2024) | — | Password → KEK |
 
-File format: [CVEF v1.2](https://github.com/Gefson-costa/stenvault/blob/main/WHITEPAPER.md#21-cvef-file-format) (Crypto Vault Encrypted File) — binary format with versioned metadata headers and algorithm identifiers for forward compatibility. Each file declares what it needs for decryption, so future algorithm transitions don't break existing files.
+File format: [CVEF v1.2](https://github.com/Gefson-costa/stenvault/blob/main/SECURITY_WHITEPAPER.md#21-cvef-file-format) (Crypto Vault Encrypted File) — binary format with versioned metadata headers and algorithm identifiers for forward compatibility. Each file declares what it needs for decryption, so future algorithm transitions don't break existing files.
 
 ## Key hierarchy
 
@@ -127,7 +127,7 @@ pnpm test          # 3,900+ tests across 145 files
 pnpm build
 ```
 
-The full system (client + backend) exposes a 26-router tRPC API. See the [whitepaper](https://github.com/Gefson-costa/stenvault/blob/main/WHITEPAPER.md) for the complete architecture.
+The full system (client + backend) exposes a 26-router tRPC API. See the [security whitepaper](https://github.com/Gefson-costa/stenvault/blob/main/SECURITY_WHITEPAPER.md) for the complete architecture.
 
 ## Contributing
 
