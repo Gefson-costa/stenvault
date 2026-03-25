@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useOperationStore, getHasActiveOperations } from './operationStore';
+import { useOperationStore, getHasActiveOperations, getLastActiveOperationStartTime } from './operationStore';
 
 function getState() {
     return useOperationStore.getState();
@@ -217,6 +217,50 @@ describe('Operation Store', () => {
             expect(ops.filter((op) => op.status !== 'completed' && op.status !== 'error')).toHaveLength(1);
             expect(ops.filter((op) => op.status === 'completed')).toHaveLength(1);
             expect(ops.filter((op) => op.status === 'error')).toHaveLength(1);
+        });
+    });
+
+    // ============ getLastActiveOperationStartTime ============
+
+    describe('getLastActiveOperationStartTime', () => {
+        it('should return null when no operations exist', () => {
+            expect(getLastActiveOperationStartTime()).toBeNull();
+        });
+
+        it('should return null when all operations are terminal', () => {
+            const id = getState().addOperation({ type: 'upload', filename: 'a.txt' });
+            getState().completeOperation(id);
+
+            expect(getLastActiveOperationStartTime()).toBeNull();
+        });
+
+        it('should return createdAt of the only active operation', () => {
+            getState().addOperation({ type: 'upload', filename: 'a.txt', status: 'uploading' });
+
+            const result = getLastActiveOperationStartTime();
+            expect(result).toBeTypeOf('number');
+            expect(result).toBeGreaterThan(0);
+        });
+
+        it('should return the most recent createdAt among active operations', () => {
+            getState().addOperation({ type: 'upload', filename: 'a.txt', status: 'uploading' });
+
+            // Manually set a second operation with a later timestamp
+            const id2 = getState().addOperation({ type: 'download', filename: 'b.txt', status: 'downloading' });
+
+            const result = getLastActiveOperationStartTime();
+            const op2 = getState().operations.find(op => op.id === id2);
+            expect(result).toBe(op2!.createdAt);
+        });
+
+        it('should ignore completed operations', () => {
+            const id1 = getState().addOperation({ type: 'upload', filename: 'a.txt', status: 'uploading' });
+            getState().addOperation({ type: 'download', filename: 'b.txt', status: 'downloading' });
+            getState().completeOperation(id1);
+
+            const result = getLastActiveOperationStartTime();
+            const activeOps = getState().operations.filter(op => op.status !== 'completed');
+            expect(result).toBe(activeOps[0]!.createdAt);
         });
     });
 });

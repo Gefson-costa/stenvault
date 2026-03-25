@@ -342,5 +342,48 @@ describe('Multipart Upload', () => {
             expect(results).toHaveLength(1);
             expect(results[0]!.partNumber).toBe(1);
         });
+
+        it('should abort remaining parts when one part fails (early abort)', async () => {
+            let callIndex = 0;
+            // Use delayed getPartUrl to force proper async interleaving
+            // so the abort flag can propagate between workers
+            const getPartUrl = vi.fn().mockImplementation(async () => {
+                await new Promise(r => setTimeout(r, 1));
+                return 'https://example.com/upload';
+            });
+
+            vi.stubGlobal('XMLHttpRequest', function() {
+                const partNum = ++callIndex;
+                // Part 2 fails with 403
+                if (partNum === 2) {
+                    return createMockXhr({ status: 403 });
+                }
+                return createMockXhr({ status: 200, etag: `"etag-${partNum}"` });
+            });
+
+            // 10 parts with 3 workers — after part 2 fails, remaining should be aborted
+            const blob = new Blob(['x'.repeat(1000)]);
+
+            await expect(performMultipartUpload(blob, {
+                partSize: 100,
+                getPartUrl,
+            })).rejects.toThrow('Part upload failed: 403');
+
+            // With the abort flag, fewer parts should be attempted than total (10)
+            expect(getPartUrl.mock.calls.length).toBeLessThan(10);
+        });
+
+        it('should throw first error when multiple parts fail', async () => {
+            vi.stubGlobal('XMLHttpRequest', function() {
+                return createMockXhr({ status: 500 });
+            });
+
+            const blob = new Blob(['x'.repeat(300)]);
+
+            await expect(performMultipartUpload(blob, {
+                partSize: 100,
+                getPartUrl: vi.fn().mockResolvedValue('https://example.com/upload'),
+            })).rejects.toThrow('Part upload failed: 500');
+        });
     });
 });
