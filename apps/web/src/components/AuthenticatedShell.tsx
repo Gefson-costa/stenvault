@@ -28,6 +28,7 @@ const AdminPanel = lazy(() => import('@/pages/AdminPanel'));
 const QuantumMesh = lazy(() => import('@/pages/QuantumMesh'));
 const TransferHistory = lazy(() => import('@/pages/TransferHistory'));
 const SendHistory = lazy(() => import('@/pages/SendHistory'));
+const OrgManagement = lazy(() => import('@/pages/OrgManagementPage'));
 
 export function AuthenticatedShell() {
   useEffect(() => { prefetchCoreRoutes(); }, []);
@@ -50,6 +51,7 @@ export function AuthenticatedShell() {
                 <Route path="/quantum-mesh" element={<P2PErrorBoundary><QuantumMesh /></P2PErrorBoundary>} />
                 <Route path="/transfers" element={<TransferHistory />} />
                 <Route path="/sends" element={<SendHistory />} />
+                <Route path="/organization" element={<OrgManagement />} />
                 <Route path="/admin" element={<AdminGuard><AdminPanel /></AdminGuard>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

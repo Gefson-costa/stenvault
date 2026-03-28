@@ -85,6 +85,7 @@ const baseMenuItems = menuGroups.flat();
 
 // Feature-gated menu items (added dynamically)
 const quantumMeshItem = { icon: Network, label: "Quantum Mesh", path: "/quantum-mesh" };
+const teamItem = { icon: Users, label: "Team", path: "/organization" };
 
 // Sidebar width configuration
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -94,7 +95,7 @@ const MAX_WIDTH = 480;
 
 // Get page title from location
 function getPageTitle(location: string): string {
-  const allItems = [...baseMenuItems, quantumMeshItem];
+  const allItems = [...baseMenuItems, quantumMeshItem, teamItem];
   const menuItem = allItems.find(item => item.path === location);
   return menuItem?.label || "StenVault";
 }
@@ -316,8 +317,13 @@ function DesktopLayoutContent({
     if (isOrgContext) {
       items = items.filter(item => !orgHiddenPaths.has(item.path));
     }
-    // Inject Quantum Mesh only if server-enabled AND plan allows it
-    if (i === 1 && p2pEnabled && hasPlanP2P && !isOrgContext) return [...items, quantumMeshItem];
+    if (i === 1) {
+      // Inject Team at top of secondary group when in org context
+      if (isOrgContext) items = [teamItem, ...items];
+      // Inject Quantum Mesh only if server-enabled AND plan allows it
+      if (p2pEnabled && hasPlanP2P && !isOrgContext) items = [...items, quantumMeshItem];
+      return items;
+    }
     return items;
   });
 

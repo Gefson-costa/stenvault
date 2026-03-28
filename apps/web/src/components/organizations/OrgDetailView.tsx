@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
     Building2,
     Users,
@@ -35,10 +36,11 @@ const roleColors = { owner: "text-amber-500", admin: "text-blue-500", member: "t
 export interface OrgDetailViewProps {
     org: { id: number; name: string; slug: string; role: "owner" | "admin" | "member"; storageQuota: number; storageUsed: number };
     userId: number;
-    onBack: () => void;
+    onBack?: () => void;
 }
 
 export function OrgDetailView({ org, userId, onBack }: OrgDetailViewProps) {
+    const navigate = useNavigate();
     const { data: storageStats } = useOrganizationStorageStats(org.id);
     const { updateOrg } = useOrganizationMutations();
     const { refreshOrganizations } = useOrganizationContext();
@@ -80,9 +82,11 @@ export function OrgDetailView({ org, userId, onBack }: OrgDetailViewProps) {
             <AuroraCard variant="glass">
                 <AuroraCardContent className="p-6">
                     <div className="flex items-center gap-3">
-                        <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
-                            <ArrowLeft className="w-5 h-5" />
-                        </Button>
+                        {onBack && (
+                            <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
+                                <ArrowLeft className="w-5 h-5" />
+                            </Button>
+                        )}
                         <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                             <Building2 className="w-5 h-5 text-primary" />
                         </div>
@@ -221,7 +225,7 @@ export function OrgDetailView({ org, userId, onBack }: OrgDetailViewProps) {
                 orgId={org.id}
                 orgName={org.name}
                 role={org.role}
-                onLeft={onBack}
+                onLeft={onBack ?? (() => navigate('/home'))}
             />
 
             {/* Invite Modal */}
