@@ -92,7 +92,8 @@ export function useDrive() {
   useEffect(() => {
     if (orgId && isUnlocked && !orgVaultUnlocked) {
       unlockOrgVault(orgId).catch((err) => {
-        console.warn('[Drive] Org vault auto-unlock failed:', err);
+        console.error('[Drive] Org vault auto-unlock failed:', err);
+        toast.error("Organization vault could not be unlocked. Files will appear encrypted.");
       });
     }
   }, [orgId, isUnlocked, orgVaultUnlocked, unlockOrgVault]);
@@ -199,14 +200,26 @@ export function useDrive() {
         });
         return;
       } catch (error) {
-        console.warn('[Drive] Failed to encrypt folder name, falling back to plaintext', error);
+        console.error('[Drive] Failed to encrypt folder name:', error);
+        if (orgId) {
+          // Rule 1: Zero-Knowledge is absolute — never store plaintext in org context
+          toast.error('Failed to encrypt folder name. Please re-unlock the vault and try again.');
+          return;
+        }
+        // Personal vault: fallback to plaintext (legacy behavior)
+        console.warn('[Drive] Falling back to plaintext folder name');
       }
+    }
+
+    if (orgId) {
+      // Rule 1: org context requires encryption — block plaintext creation
+      toast.error('Organization vault must be unlocked to create folders.');
+      return;
     }
 
     createFolder.mutate({
       name: trimmedName,
       parentId: currentFolderId,
-      organizationId: orgId,
     });
   }, [newFolderName, currentFolderId, createFolder, effectiveUnlocked, orgId, deriveFoldernameKey, deriveOrgFoldernameKey]);
 

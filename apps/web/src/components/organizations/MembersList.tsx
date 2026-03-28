@@ -62,7 +62,7 @@ export function MembersList({ organizationId, currentUserRole, currentUserId }: 
     const { removeMember, updateMemberRole, transferOwnership } = useOrganizationMutations();
     const utils = trpc.useUtils();
     const rotateOMK = trpc.orgKeys.rotateOMK.useMutation();
-    const { unlockOrgVault, getOrgMasterKey } = useOrgMasterKey();
+    const { unlockOrgVault, getOrgMasterKey, clearOrgCache } = useOrgMasterKey();
 
     const [confirmAction, setConfirmAction] = useState<{
         type: "remove" | "transfer" | "demote";
@@ -87,19 +87,34 @@ export function MembersList({ organizationId, currentUserRole, currentUserId }: 
             try {
                 await unlockOrgVault(organizationId);
 
-                // Get remaining members' hybrid public keys
+                // Get remaining members' hybrid public keys (use allSettled to handle members without keypairs)
                 const remainingMembers = (members ?? []).filter(
                     (m: any) => m.userId !== confirmAction.memberId,
                 );
-                const memberPubKeys = await Promise.all(
+                const results = await Promise.allSettled(
                     remainingMembers.map(async (m: any) => {
                         const pk = await utils.orgKeys.getMemberHybridPublicKey.fetch({
                             organizationId,
                             targetUserId: m.userId,
                         });
+                        if (!pk?.x25519PublicKey || !pk?.mlkem768PublicKey) {
+                            throw new Error(`Member ${m.userId} has no hybrid keypair`);
+                        }
                         return pk;
-                    }).filter(Boolean),
+                    }),
                 );
+                const memberPubKeys = results
+                    .filter((r): r is PromiseFulfilledResult<typeof results[number] extends PromiseFulfilledResult<infer T> ? T : never> => r.status === "fulfilled")
+                    .map(r => r.value);
+
+                const skipped = results.filter(r => r.status === "rejected").length;
+                if (skipped > 0) {
+                    console.warn(`[MembersList] ${skipped} member(s) skipped during rotation (no hybrid keypair)`);
+                }
+
+                if (memberPubKeys.length === 0) {
+                    throw new Error("No remaining members have hybrid keypairs. Cannot rotate keys.");
+                }
 
                 const payload = await buildRotationPayload(
                     organizationId,
@@ -107,10 +122,11 @@ export function MembersList({ organizationId, currentUserRole, currentUserId }: 
                     `member_removed: ${confirmAction.memberName}`,
                 );
                 await rotateOMK.mutateAsync(payload);
-                toast.success("Organization keys rotated");
+                clearOrgCache(organizationId); // Invalidate stale OMK — next operation will fetch new key
+                toast.success(`Organization keys rotated${skipped > 0 ? ` (${skipped} member(s) need key setup)` : ""}`);
             } catch (rotErr: any) {
-                console.warn('[MembersList] OMK rotation failed:', rotErr);
-                toast.warning("Member removed, but key rotation failed. Rotate manually from settings.");
+                console.error('[MembersList] OMK rotation failed:', rotErr);
+                toast.error("Member removed, but key rotation failed. The removed member may still decrypt new files until keys are rotated manually from settings.");
             }
         } catch (error: any) {
             toast.error(error.message || "Failed to remove member");

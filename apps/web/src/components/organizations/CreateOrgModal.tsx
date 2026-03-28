@@ -97,17 +97,20 @@ export function CreateOrgModal({ open, onOpenChange, onSuccess }: CreateOrgModal
 
             if (result) {
                 // Initialize org vault encryption (OMK + hybrid keypair)
+                // Rule 3: Fail Loud — if vault init fails, do NOT proceed (org is unusable without encryption)
                 try {
                     await initializeOrgVault(
                         result.id,
                         personalMK,
                         orgKeysSetup.mutateAsync,
                     );
-                    toast.success("Organization created with encryption enabled");
                 } catch (vaultErr: any) {
-                    console.warn('[OrgSetup] Vault initialization failed:', vaultErr);
-                    toast.warning("Organization created, but encryption setup failed. You can retry from settings.");
+                    console.error('[OrgSetup] Vault initialization failed:', vaultErr);
+                    toast.error("Organization created but encryption setup failed. Please try again — the organization cannot be used without encryption.");
+                    // Do NOT close modal or navigate — org exists but is unusable
+                    return;
                 }
+                toast.success("Organization created with encryption enabled");
             }
 
             onOpenChange(false);

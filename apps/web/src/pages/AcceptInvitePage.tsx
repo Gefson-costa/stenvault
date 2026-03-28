@@ -12,6 +12,7 @@ import { trpc } from "@/lib/trpc";
 import { Building2, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOrganizationContext } from "@/contexts/OrganizationContext";
+import { toast } from "sonner";
 
 type Status = "loading" | "success" | "error";
 
@@ -33,17 +34,20 @@ export default function AcceptInvitePage() {
             return;
         }
 
+        let cancelled = false;
         acceptInvite.mutateAsync({ inviteCode: code })
             .then((result) => {
+                if (cancelled) return;
                 setStatus("success");
                 setOrgId(result.organizationId);
                 refreshOrganizations();
             })
             .catch((err: any) => {
+                if (cancelled) return;
                 setStatus("error");
                 setErrorMessage(err.message || "Failed to accept invite");
             });
-        // Run once on mount
+        return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [code]);
 
@@ -51,7 +55,10 @@ export default function AcceptInvitePage() {
         if (orgId) {
             try {
                 await switchToOrg(orgId);
-            } catch { /* ignore */ }
+            } catch (err: any) {
+                console.error('[AcceptInvite] Failed to switch to org:', err);
+                toast.error("Could not switch to the organization. Use the vault switcher to navigate manually.");
+            }
         }
         navigate("/home");
     };

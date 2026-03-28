@@ -42,33 +42,40 @@ export async function encapsulateOMKForMember(
 
   // Hybrid encapsulate → ephemeral ECDH + ML-KEM encapsulate → HKDF → 32-byte shared secret
   const { ciphertext, sharedSecret } = await hybridKem.encapsulate(recipientPubKey);
+  let omkBytes: ArrayBuffer | null = null;
 
-  // Import shared secret as AES-GCM key for encrypting OMK
-  const kek = await crypto.subtle.importKey(
-    'raw',
-    toArrayBuffer(sharedSecret),
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt'],
-  );
-  sharedSecret.fill(0);
+  try {
+    // Import shared secret as AES-GCM key for encrypting OMK
+    const kek = await crypto.subtle.importKey(
+      'raw',
+      toArrayBuffer(sharedSecret),
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt'],
+    );
+    sharedSecret.fill(0);
 
-  // Export raw OMK bytes
-  const omkBytes = await crypto.subtle.exportKey('raw', omk);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+    // Export raw OMK bytes
+    omkBytes = await crypto.subtle.exportKey('raw', omk);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
 
-  // AES-GCM encrypt the raw OMK with the hybrid KEK
-  const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    kek,
-    omkBytes,
-  );
-  new Uint8Array(omkBytes).fill(0);
+    // AES-GCM encrypt the raw OMK with the hybrid KEK
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      kek,
+      omkBytes,
+    );
+    new Uint8Array(omkBytes).fill(0);
+    omkBytes = null;
 
-  return {
-    omkEncrypted: arrayBufferToBase64(encrypted),
-    distributionIv: arrayBufferToBase64(toArrayBuffer(iv)),
-    distributionX25519Public: arrayBufferToBase64(toArrayBuffer(ciphertext.classical)),
-    distributionMlkemCiphertext: arrayBufferToBase64(toArrayBuffer(ciphertext.postQuantum)),
-  };
+    return {
+      omkEncrypted: arrayBufferToBase64(encrypted),
+      distributionIv: arrayBufferToBase64(toArrayBuffer(iv)),
+      distributionX25519Public: arrayBufferToBase64(toArrayBuffer(ciphertext.classical)),
+      distributionMlkemCiphertext: arrayBufferToBase64(toArrayBuffer(ciphertext.postQuantum)),
+    };
+  } finally {
+    sharedSecret.fill(0); // Idempotent re-zero in case importKey threw before line 54
+    if (omkBytes) new Uint8Array(omkBytes).fill(0);
+  }
 }
