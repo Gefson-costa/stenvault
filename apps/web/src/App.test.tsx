@@ -45,23 +45,23 @@ vi.mock('@/lib/auth', () => ({
   cancelProactiveRefresh: vi.fn(),
 }));
 
-// Mock react-router-dom — render all routes with data attributes for inspection
-vi.mock('react-router-dom', () => ({
-  Route: ({ path, element }: any) => {
+// Mock wouter — render all routes with data attributes for inspection
+vi.mock('wouter', () => ({
+  Route: ({ path, component: Comp, children }: any) => {
+    const content = Comp ? <Comp /> : children;
+    // Catch-all route (no path) — still render it
     return (
       <div data-testid={`route:${path || '*'}`} data-path={path || '*'}>
-        {element}
+        {content}
       </div>
     );
   },
-  Routes: ({ children }: any) => <div data-testid="switch">{children}</div>,
-  Navigate: ({ to }: any) => <div data-testid="redirect" data-to={to} />,
-  BrowserRouter: ({ children }: any) => <div>{children}</div>,
-  useLocation: () => ({ pathname: '/' }),
-  useNavigate: () => vi.fn(),
-  useSearchParams: () => [new URLSearchParams(''), vi.fn()],
-  useParams: () => ({}),
-  Link: ({ children, to }: any) => <a href={to}>{children}</a>,
+  Switch: ({ children }: any) => <div data-testid="switch">{children}</div>,
+  Redirect: ({ to }: any) => <div data-testid="redirect" data-to={to} />,
+  useLocation: () => ['/', vi.fn()],
+  useSearch: () => '',
+  useRoute: () => [true, {}],
+  Link: ({ children, href }: any) => <a href={href}>{children}</a>,
 }));
 
 // Mock guards — render children but mark themselves with data attributes
@@ -144,7 +144,6 @@ vi.mock('./pages/VerifyMagicLink', () => ({ default: mockPage('verify-magic-link
 vi.mock('./pages/VerifyEmail', () => ({ default: mockPage('verify-email') }));
 vi.mock('./pages/ShamirRecovery', () => ({ default: mockPage('shamir-recovery') }));
 vi.mock('./pages/MasterKeySetup', () => ({ default: mockPage('master-key-setup') }));
-vi.mock('./pages/AcceptInvitePage', () => ({ default: mockPage('accept-invite') }));
 vi.mock('./pages/RecoveryCodeReset', () => ({ default: mockPage('recovery-code-reset') }));
 vi.mock('./pages/NotFound', () => ({ default: mockPage('not-found') }));
 vi.mock('./pages/Home', () => ({ default: mockPage('home') }));
@@ -159,7 +158,6 @@ vi.mock('./pages/AdminPanel', () => ({ default: mockPage('admin') }));
 vi.mock('./pages/QuantumMesh', () => ({ default: mockPage('quantum-mesh') }));
 vi.mock('./pages/TransferHistory', () => ({ default: mockPage('transfers') }));
 vi.mock('./pages/SendHistory', () => ({ default: mockPage('send-history') }));
-vi.mock('./pages/OrgManagementPage', () => ({ default: mockPage('org-management') }));
 
 // Mock P2P components
 vi.mock('./components/p2p/P2PReceivePage', () => ({
@@ -187,10 +185,6 @@ vi.mock('@/components/ui/sonner', () => ({
 }));
 vi.mock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: any) => <div>{children}</div>,
-}));
-vi.mock('@/lib/routePrefetch', () => ({
-  prefetchCoreRoutes: vi.fn(),
-  prefetchRoute: vi.fn(),
 }));
 vi.mock('./components/CookieConsentBanner', () => ({
   CookieConsentBanner: () => <div data-testid="cookie-banner" />,
@@ -225,13 +219,10 @@ describe('Route Inventory', () => {
   let container: HTMLElement;
 
   beforeEach(async () => {
-    let result: ReturnType<typeof render>;
     await act(async () => {
-      result = render(<App />);
+      const result = render(<App />);
+      container = result.container;
     });
-    // Flush lazy component resolution (React.lazy needs extra microtask cycles)
-    await act(async () => {});
-    container = result!.container;
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -340,22 +331,6 @@ describe('Route Inventory', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // ACCEPT INVITE (AuthGuard only, NO MasterKeyGuard, NO DashboardLayout)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  describe('Accept Invite route', () => {
-    it('/invite/:code has AuthGuard but NOT MasterKeyGuard or DashboardLayout', () => {
-      const route = getRoute(container, '/invite/:code');
-      expect(route).toBeTruthy();
-      expect(hasGuard(route!, 'auth')).toBe(true);
-      expect(hasGuard(route!, 'masterkey')).toBe(false);
-      expect(route!.querySelector('[data-testid="dashboard-layout"]')).toBeNull();
-      expect(hasPage(route!, 'accept-invite')).toBe(true);
-      expect(hasErrorBoundary(route!, 'Accept Invite')).toBe(true);
-    });
-  });
-
-  // ═══════════════════════════════════════════════════════════════════════════
   // P2P ROUTES (public, P2PErrorBoundary)
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -427,7 +402,6 @@ describe('Route Inventory', () => {
         { path: '/chat', page: 'chat' },
         { path: '/transfers', page: 'transfers' },
         { path: '/sends', page: 'send-history' },
-        { path: '/organization', page: 'org-management' },
       ];
 
       it.each(protectedRoutes)('$path exists inside the shell', ({ path, page }) => {
@@ -470,20 +444,20 @@ describe('Route Inventory', () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   describe('Route count integrity', () => {
-    it('App Router has exactly 24 top-level routes (including catch-all)', () => {
+    it('App Router has exactly 23 top-level routes (including catch-all)', () => {
       const topSwitch = container.querySelector('[data-testid="switch"]');
       const topRoutes = topSwitch?.querySelectorAll(':scope > [data-path]');
-      // 23 explicit paths + 1 catch-all (*) = 24
-      expect(topRoutes?.length).toBe(24);
+      // 22 explicit paths + 1 catch-all (*) = 23
+      expect(topRoutes?.length).toBe(23);
     });
 
-    it('AuthenticatedShell has exactly 14 inner routes (including catch-all)', () => {
+    it('AuthenticatedShell has exactly 13 inner routes (including catch-all)', () => {
       const shellRoute = getRoute(container, '*')!;
       const layout = shellRoute.querySelector('[data-testid="dashboard-layout"]')!;
       const innerSwitch = layout.querySelector('[data-testid="switch"]');
       const innerRoutes = innerSwitch?.querySelectorAll(':scope > [data-path]');
-      // 13 explicit paths + 1 catch-all = 14
-      expect(innerRoutes?.length).toBe(14);
+      // 12 explicit paths + 1 catch-all = 13
+      expect(innerRoutes?.length).toBe(13);
     });
   });
 
