@@ -53,6 +53,7 @@ import { VaultSwitcher } from "@/components/VaultSwitcher";
 import { useCurrentOrgId } from "@/contexts/OrganizationContext";
 import { VaultUnlockModal } from "@/components/VaultUnlockModal";
 import { useMasterKey } from "@/hooks/useMasterKey";
+import { useAutoKeyDistribution } from "@/hooks/useAutoKeyDistribution";
 import { toast } from "sonner";
 import { AlertTriangle, CreditCard, Clock, Users } from "lucide-react";
 import { formatBytes } from "@stenvault/shared";
@@ -288,6 +289,7 @@ function DesktopLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [unlockModalOpen, setUnlockModalOpen] = useState(false);
   const { isUnlocked: vaultUnlocked, clearCache: lockVault } = useMasterKey();
+  useAutoKeyDistribution();
   useBeforeUnloadWarning();
 
   // Check if P2P feature is enabled (server-side toggle)

@@ -8,7 +8,7 @@
  * or any edge case where the key-in-URL flow didn't complete.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { useOrganizationContext } from "@/contexts/OrganizationContext";
 import { useOrgMasterKey } from "./useOrgMasterKey";
@@ -27,13 +27,6 @@ export function useAutoKeyDistribution() {
 
     const isDistributingRef = useRef(false);
     const failedIdsRef = useRef<Map<number, number>>(new Map());
-    // Stable refs for values used inside the async distribute function
-    const wrapForMemberRef = useRef(wrapForMember);
-    wrapForMemberRef.current = wrapForMember;
-    const getOrgMasterKeyRef = useRef(getOrgMasterKey);
-    getOrgMasterKeyRef.current = getOrgMasterKey;
-    const utilsRef = useRef(utils);
-    utilsRef.current = utils;
 
     const orgId = currentOrg?.id ?? null;
     const isAdminOrOwner = currentOrg?.role === "owner" || currentOrg?.role === "admin";
@@ -49,64 +42,65 @@ export function useAutoKeyDistribution() {
         },
     );
 
-    useEffect(() => {
-        if (!orgId || !pendingData || pendingData.pendingMembers.length === 0) return;
-        if (isDistributingRef.current) return;
+    const distribute = useCallback(async () => {
+        if (!orgId || !pendingData || isDistributingRef.current) return;
 
-        const distribute = async () => {
-            const now = Date.now();
-            const eligible = pendingData.pendingMembers
-                .filter(m => m.hasHybridKey)
-                .filter(m => {
-                    const failedAt = failedIdsRef.current.get(m.userId);
-                    return !failedAt || now - failedAt > FAIL_COOLDOWN_MS;
-                })
-                .slice(0, BATCH_LIMIT);
+        const now = Date.now();
+        const eligible = pendingData.pendingMembers
+            .filter(m => m.hasHybridKey)
+            .filter(m => {
+                const failedAt = failedIdsRef.current.get(m.userId);
+                return !failedAt || now - failedAt > FAIL_COOLDOWN_MS;
+            })
+            .slice(0, BATCH_LIMIT);
 
-            if (eligible.length === 0) return;
+        if (eligible.length === 0) return;
 
-            const omk = getOrgMasterKeyRef.current(orgId);
-            if (!omk) return;
+        const omk = getOrgMasterKey(orgId);
+        if (!omk) return;
 
-            isDistributingRef.current = true;
-            let distributed = 0;
+        isDistributingRef.current = true;
+        let distributed = 0;
 
-            try {
-                for (const member of eligible) {
-                    try {
-                        const pubKey = await utilsRef.current.orgKeys.getMemberHybridPublicKey.fetch({
-                            organizationId: orgId,
-                            targetUserId: member.userId,
-                        });
+        try {
+            for (const member of eligible) {
+                try {
+                    const pubKey = await utils.orgKeys.getMemberHybridPublicKey.fetch({
+                        organizationId: orgId,
+                        targetUserId: member.userId,
+                    });
 
-                        const payload = await encapsulateOMKForMember(omk, {
-                            x25519PublicKey: pubKey.x25519PublicKey,
-                            mlkem768PublicKey: pubKey.mlkem768PublicKey,
-                        });
+                    const payload = await encapsulateOMKForMember(omk, {
+                        x25519PublicKey: pubKey.x25519PublicKey,
+                        mlkem768PublicKey: pubKey.mlkem768PublicKey,
+                    });
 
-                        await wrapForMemberRef.current.mutateAsync({
-                            organizationId: orgId,
-                            targetUserId: member.userId,
-                            ...payload,
-                        });
+                    await wrapForMember.mutateAsync({
+                        organizationId: orgId,
+                        targetUserId: member.userId,
+                        ...payload,
+                    });
 
-                        distributed++;
-                        failedIdsRef.current.delete(member.userId);
-                    } catch (err) {
-                        console.warn(`[AutoKeyDist] Failed for user ${member.userId}:`, err);
-                        failedIdsRef.current.set(member.userId, Date.now());
-                    }
+                    distributed++;
+                    failedIdsRef.current.delete(member.userId);
+                } catch (err) {
+                    console.warn(`[AutoKeyDist] Failed for user ${member.userId}:`, err);
+                    failedIdsRef.current.set(member.userId, Date.now());
                 }
-
-                if (distributed > 0) {
-                    toast.success(`Distributed encryption keys to ${distributed} member(s).`);
-                    utilsRef.current.orgKeys.getPendingKeyDistributions.invalidate({ organizationId: orgId });
-                }
-            } finally {
-                isDistributingRef.current = false;
             }
-        };
 
-        distribute();
-    }, [orgId, pendingData]);
+            if (distributed > 0) {
+                toast.success(`Distributed encryption keys to ${distributed} member(s).`);
+                utils.orgKeys.getPendingKeyDistributions.invalidate({ organizationId: orgId });
+            }
+        } finally {
+            isDistributingRef.current = false;
+        }
+    }, [orgId, pendingData, getOrgMasterKey, utils, wrapForMember]);
+
+    useEffect(() => {
+        if (pendingData && pendingData.pendingMembers.length > 0) {
+            distribute();
+        }
+    }, [pendingData, distribute]);
 }

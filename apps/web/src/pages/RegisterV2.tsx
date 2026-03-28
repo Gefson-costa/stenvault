@@ -7,6 +7,14 @@ import { ArrowRight, Loader2 } from 'lucide-react';
 import { AuthLayout, AuthCard, AuthInput, AuthButton, AuthDivider, AuthLink } from '@/components/auth';
 import { PasswordStrengthMeter } from '@/components/auth/PasswordStrengthMeter';
 
+function getAndClearReturnUrl(): string {
+    const url = sessionStorage.getItem('stenvault_return_url');
+    sessionStorage.removeItem('stenvault_return_url');
+    if (!url) return '/home';
+    if (!url.startsWith('/') || url.startsWith('//')) return '/home';
+    return url;
+}
+
 export default function RegisterV2() {
     const setLocation = useNavigate();
     const [name, setName] = useState('');
@@ -68,7 +76,7 @@ export default function RegisterV2() {
             });
 
             await utils.auth.me.invalidate();
-            setLocation('/home');
+            setLocation(getAndClearReturnUrl());
         } catch (error: any) {
             const message = error.message || 'Registration failed';
             if (message.includes('already registered')) {

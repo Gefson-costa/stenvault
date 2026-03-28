@@ -287,3 +287,74 @@ export async function deriveOrgThumbnailKey(
     ['encrypt', 'decrypt']
   );
 }
+
+// ============ Base64url Helpers (invite key fragments) ============
+
+export function base64urlEncode(data: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < data.length; i++) {
+    binary += String.fromCharCode(data[i]!);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function base64urlDecode(str: string): Uint8Array {
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4 !== 0) base64 += '=';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// ============ Invite Key Wrapping (AES-KW) ============
+
+/**
+ * Generate a random invite key and AES-KW wrap the OMK with it.
+ * Returns the wrapped blob (base64) and the invite key (base64url for URL fragment).
+ */
+export async function wrapOMKForInvite(
+  omk: CryptoKey,
+): Promise<{ omkWrappedForInvite: string; inviteKeyFragment: string }> {
+  const inviteKeyRaw = crypto.getRandomValues(new Uint8Array(32));
+
+  const inviteKey = await crypto.subtle.importKey(
+    'raw', inviteKeyRaw as BufferSource, { name: 'AES-KW', length: 256 }, false, ['wrapKey'],
+  );
+
+  const wrappedBuf = await crypto.subtle.wrapKey('raw', omk, inviteKey, 'AES-KW');
+  const omkWrappedForInvite = arrayBufferToBase64(wrappedBuf);
+  const inviteKeyFragment = base64urlEncode(inviteKeyRaw);
+
+  inviteKeyRaw.fill(0);
+
+  return { omkWrappedForInvite, inviteKeyFragment };
+}
+
+/**
+ * Unwrap an OMK from an invite blob using the invite key from the URL fragment.
+ * Returns the raw OMK as an extractable CryptoKey (for re-wrapping with personal MK).
+ */
+export async function unwrapOMKFromInvite(
+  omkWrappedForInviteB64: string,
+  inviteKeyFragmentB64url: string,
+): Promise<CryptoKey> {
+  const inviteKeyRaw = base64urlDecode(inviteKeyFragmentB64url);
+  if (inviteKeyRaw.byteLength !== 32) {
+    throw new Error(`Invalid invite key length: expected 32 bytes, got ${inviteKeyRaw.byteLength}`);
+  }
+
+  const inviteKey = await crypto.subtle.importKey(
+    'raw', inviteKeyRaw as BufferSource, { name: 'AES-KW', length: 256 }, false, ['unwrapKey'],
+  );
+  inviteKeyRaw.fill(0);
+
+  const wrappedBuf = base64ToArrayBuffer(omkWrappedForInviteB64);
+
+  return crypto.subtle.unwrapKey(
+    'raw', wrappedBuf, inviteKey, 'AES-KW',
+    { name: 'AES-GCM', length: 256 },
+    true, // extractable for re-wrap with personal MK
+    ['wrapKey', 'unwrapKey'],
+  );
+}

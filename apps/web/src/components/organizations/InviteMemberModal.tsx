@@ -25,6 +25,8 @@ import {
     SelectValue,
 } from "../ui/select";
 import { useOrganizationMutations } from "../../hooks/organizations/useOrganizations";
+import { useOrgMasterKey } from "../../hooks/useOrgMasterKey";
+import { wrapOMKForInvite } from "../../hooks/orgMasterKeyCrypto";
 import { toast } from "sonner";
 
 interface InviteMemberModalProps {
@@ -46,6 +48,7 @@ export function InviteMemberModal({
     const [role, setRole] = useState<InviteRole>("member");
 
     const { inviteMember } = useOrganizationMutations();
+    const { getOrgMasterKey } = useOrgMasterKey();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -63,10 +66,22 @@ export function InviteMemberModal({
         }
 
         try {
+            // Wrap OMK with invite key if org vault is unlocked
+            let cryptoFields: { omkWrappedForInvite?: string; inviteKeyFragment?: string } = {};
+            const omk = getOrgMasterKey(organizationId);
+            if (omk) {
+                try {
+                    cryptoFields = await wrapOMKForInvite(omk);
+                } catch (err) {
+                    console.warn('[InviteMember] Key wrapping failed, using manual distribution:', err);
+                }
+            }
+
             await inviteMember.mutateAsync({
                 organizationId,
                 email: email.trim(),
                 role,
+                ...cryptoFields,
             });
 
             toast.success(`Invitation sent to ${email}`);

@@ -30,8 +30,12 @@ export function AuthGuard({
         return <>{fallback}</>;
     }
 
-    // Not authenticated - redirect to landing
+    // Not authenticated - save return URL (including hash fragment) and redirect
     if (!isAuthenticated) {
+        const returnUrl = window.location.pathname + window.location.search + window.location.hash;
+        if (returnUrl !== '/landing' && returnUrl !== '/') {
+            sessionStorage.setItem('stenvault_return_url', returnUrl);
+        }
         return <Navigate to={redirectTo} replace />;
     }
 

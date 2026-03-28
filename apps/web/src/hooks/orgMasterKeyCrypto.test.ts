@@ -21,6 +21,10 @@ import {
   deriveOrgFilenameKey,
   deriveOrgThumbnailKey,
   deriveOrgFileKeyWithBytes,
+  base64urlEncode,
+  base64urlDecode,
+  wrapOMKForInvite,
+  unwrapOMKFromInvite,
 } from './orgMasterKeyCrypto';
 
 // Helper to generate a 32-byte AES-GCM key (extractable for wrap/unwrap tests)
@@ -213,6 +217,71 @@ describe('orgMasterKeyCrypto', () => {
       expect(fpFile).not.toBe(fpFilename);
       expect(fpFile).not.toBe(fpThumb);
       expect(fpFilename).not.toBe(fpThumb);
+    });
+  });
+});
+
+describe('invite key wrapping', () => {
+  describe('base64url encode/decode', () => {
+    it('should roundtrip arbitrary bytes', () => {
+      const data = crypto.getRandomValues(new Uint8Array(32));
+      const encoded = base64urlEncode(data);
+      const decoded = base64urlDecode(encoded);
+      expect(decoded).toEqual(data);
+    });
+
+    it('should produce URL-safe output (no +, /, =)', () => {
+      const data = crypto.getRandomValues(new Uint8Array(64));
+      const encoded = base64urlEncode(data);
+      expect(encoded).not.toMatch(/[+/=]/);
+    });
+  });
+
+  describe('wrapOMKForInvite / unwrapOMKFromInvite', () => {
+    it('should roundtrip: wrap then unwrap produces identical OMK', async () => {
+      const omk = await generateTestKey();
+      const { omkWrappedForInvite, inviteKeyFragment } = await wrapOMKForInvite(omk);
+
+      expect(omkWrappedForInvite.length).toBeGreaterThan(0);
+      expect(inviteKeyFragment.length).toBeGreaterThan(0);
+
+      const recovered = await unwrapOMKFromInvite(omkWrappedForInvite, inviteKeyFragment);
+      expect(await keysEqual(omk, recovered)).toBe(true);
+    });
+
+    it('should fail unwrap with wrong invite key', async () => {
+      const omk = await generateTestKey();
+      const { omkWrappedForInvite } = await wrapOMKForInvite(omk);
+
+      // Generate a different key
+      const wrongKey = base64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
+
+      await expect(
+        unwrapOMKFromInvite(omkWrappedForInvite, wrongKey),
+      ).rejects.toThrow();
+    });
+
+    it('should reject invite key with invalid length', async () => {
+      const shortKey = base64urlEncode(new Uint8Array(16)); // 16 bytes, not 32
+
+      await expect(
+        unwrapOMKFromInvite('fakeblob==', shortKey),
+      ).rejects.toThrow('Invalid invite key length: expected 32 bytes, got 16');
+    });
+
+    it('should produce extractable OMK after unwrap (for re-wrap with personal MK)', async () => {
+      const omk = await generateTestKey();
+      const { omkWrappedForInvite, inviteKeyFragment } = await wrapOMKForInvite(omk);
+      const recovered = await unwrapOMKFromInvite(omkWrappedForInvite, inviteKeyFragment);
+
+      // Should be able to re-wrap with personal MK
+      const personalMK = await generateAesKwKey();
+      const wrapped = await wrapOMKWithPersonalMK(recovered, personalMK);
+      expect(wrapped.length).toBeGreaterThan(0);
+
+      // And unwrap again
+      const final = await unwrapOMKWithPersonalMK(wrapped, personalMK);
+      expect(await keysEqual(omk, final)).toBe(true);
     });
   });
 });

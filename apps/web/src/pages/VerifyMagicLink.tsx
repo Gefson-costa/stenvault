@@ -5,6 +5,14 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { AuthLayout, AuthCard } from "@/components/auth";
 
+function getAndClearReturnUrl(): string {
+  const url = sessionStorage.getItem('stenvault_return_url');
+  sessionStorage.removeItem('stenvault_return_url');
+  if (!url) return '/home';
+  if (!url.startsWith('/') || url.startsWith('//')) return '/home';
+  return url;
+}
+
 export default function VerifyMagicLink() {
   const setLocation = useNavigate();
   const [searchParams] = useSearchParams();
@@ -32,7 +40,7 @@ export default function VerifyMagicLink() {
 
         // Server sets HttpOnly cookies in the response
         toast.success("Login successful");
-        setLocation("/home");
+        setLocation(getAndClearReturnUrl());
       } catch (error: any) {
         toast.error(error.message || "Invalid or expired link");
         setLocation("/auth/login");

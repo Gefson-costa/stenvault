@@ -92,9 +92,13 @@ export function useDrive() {
   useEffect(() => {
     if (orgId && isUnlocked && !orgVaultUnlocked) {
       unlockOrgVault(orgId).catch((err) => {
-        console.error('[Drive] Org vault auto-unlock failed:', err);
-        const msg = err instanceof Error ? err.message : 'Unknown error';
-        toast.error(`Organization vault could not be unlocked: ${msg}`);
+        const msg = err instanceof Error ? err.message : '';
+        if (msg.includes('NOT_FOUND') || msg.includes('No wrapped')) {
+          toast.info("An admin needs to grant you encryption access to this organization.", { duration: 6000 });
+        } else {
+          console.error('[Drive] Org vault auto-unlock failed:', err);
+          toast.error(`Organization vault could not be unlocked: ${msg || 'Unknown error'}`);
+        }
       });
     }
   }, [orgId, isUnlocked, orgVaultUnlocked, unlockOrgVault]);

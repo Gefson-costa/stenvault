@@ -48,9 +48,13 @@ export function VaultSwitcher() {
                 // Auto-unlock org vault if personal vault is unlocked
                 if (isPersonalUnlocked) {
                     unlockOrgVault(orgId).catch((err) => {
-                        console.error('[VaultSwitcher] Org vault auto-unlock failed:', err);
-                        const msg = err instanceof Error ? err.message : 'Unknown error';
-                        toast.error(`Could not unlock organization vault: ${msg}`);
+                        const msg = err instanceof Error ? err.message : '';
+                        if (msg.includes('NOT_FOUND') || msg.includes('No wrapped')) {
+                            toast.info("An admin needs to grant you encryption access to this organization.", { duration: 6000 });
+                        } else {
+                            console.error('[VaultSwitcher] Org vault auto-unlock failed:', err);
+                            toast.error(`Could not unlock organization vault: ${msg || 'Unknown error'}`);
+                        }
                     });
                 }
             }

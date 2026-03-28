@@ -10,6 +10,14 @@ import { AuthLayout, AuthCard, AuthInput, AuthButton, AuthDivider, AuthLink } fr
 // Polling interval for checking if login was completed elsewhere (ms)
 const AUTH_POLL_INTERVAL_MS = 3000;
 
+function getAndClearReturnUrl(): string {
+    const url = sessionStorage.getItem('stenvault_return_url');
+    sessionStorage.removeItem('stenvault_return_url');
+    if (!url) return '/home';
+    if (!url.startsWith('/') || url.startsWith('//')) return '/home';
+    return url;
+}
+
 export default function LoginV2() {
     const setLocation = useNavigate();
     const [authMethod, setAuthMethod] = useState<'password' | 'magic'>('password');
@@ -42,7 +50,7 @@ export default function LoginV2() {
     useEffect(() => {
         if (showOtpInput && currentUser) {
             toast.success('Login completed on another device!');
-            setLocation('/home');
+            setLocation(getAndClearReturnUrl());
         }
     }, [currentUser, showOtpInput, setLocation]);
 
@@ -51,7 +59,7 @@ export default function LoginV2() {
         toast.success('Login successful');
         scheduleProactiveRefresh();
         await utils.auth.me.invalidate();
-        setLocation('/home');
+        setLocation(getAndClearReturnUrl());
     };
 
     const handleLogin = async (e: React.FormEvent) => {
