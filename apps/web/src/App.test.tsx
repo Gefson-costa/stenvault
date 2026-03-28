@@ -159,6 +159,7 @@ vi.mock('./pages/AdminPanel', () => ({ default: mockPage('admin') }));
 vi.mock('./pages/QuantumMesh', () => ({ default: mockPage('quantum-mesh') }));
 vi.mock('./pages/TransferHistory', () => ({ default: mockPage('transfers') }));
 vi.mock('./pages/SendHistory', () => ({ default: mockPage('send-history') }));
+vi.mock('./pages/OrgManagementPage', () => ({ default: mockPage('org-management') }));
 
 // Mock P2P components
 vi.mock('./components/p2p/P2PReceivePage', () => ({
@@ -186,6 +187,10 @@ vi.mock('@/components/ui/sonner', () => ({
 }));
 vi.mock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: any) => <div>{children}</div>,
+}));
+vi.mock('@/lib/routePrefetch', () => ({
+  prefetchCoreRoutes: vi.fn(),
+  prefetchRoute: vi.fn(),
 }));
 vi.mock('./components/CookieConsentBanner', () => ({
   CookieConsentBanner: () => <div data-testid="cookie-banner" />,
@@ -220,10 +225,13 @@ describe('Route Inventory', () => {
   let container: HTMLElement;
 
   beforeEach(async () => {
+    let result: ReturnType<typeof render>;
     await act(async () => {
-      const result = render(<App />);
-      container = result.container;
+      result = render(<App />);
     });
+    // Flush lazy component resolution (React.lazy needs extra microtask cycles)
+    await act(async () => {});
+    container = result!.container;
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -419,6 +427,7 @@ describe('Route Inventory', () => {
         { path: '/chat', page: 'chat' },
         { path: '/transfers', page: 'transfers' },
         { path: '/sends', page: 'send-history' },
+        { path: '/organization', page: 'org-management' },
       ];
 
       it.each(protectedRoutes)('$path exists inside the shell', ({ path, page }) => {
@@ -468,13 +477,13 @@ describe('Route Inventory', () => {
       expect(topRoutes?.length).toBe(24);
     });
 
-    it('AuthenticatedShell has exactly 13 inner routes (including catch-all)', () => {
+    it('AuthenticatedShell has exactly 14 inner routes (including catch-all)', () => {
       const shellRoute = getRoute(container, '*')!;
       const layout = shellRoute.querySelector('[data-testid="dashboard-layout"]')!;
       const innerSwitch = layout.querySelector('[data-testid="switch"]');
       const innerRoutes = innerSwitch?.querySelectorAll(':scope > [data-path]');
-      // 12 explicit paths + 1 catch-all = 13
-      expect(innerRoutes?.length).toBe(13);
+      // 13 explicit paths + 1 catch-all = 14
+      expect(innerRoutes?.length).toBe(14);
     });
   });
 
