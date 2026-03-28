@@ -238,15 +238,16 @@ export default function MasterKeySetup() {
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         placeholder="Create your encryption password..."
-                                        className="pr-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
+                                        size="lg"
+                                        className="pr-12 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
                                     />
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-300"
                                         aria-label={showPassword ? "Hide password" : "Show password"}
                                     >
-                                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                     </button>
                                 </div>
 
@@ -265,8 +266,9 @@ export default function MasterKeySetup() {
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                         placeholder="Confirm your password..."
+                                        size="lg"
                                         className={cn(
-                                            'pr-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500',
+                                            'pr-12 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500',
                                             confirmPassword && !passwordsMatch && 'border-red-500',
                                             confirmPassword && passwordsMatch && 'border-emerald-500/50'
                                         )}
@@ -274,10 +276,10 @@ export default function MasterKeySetup() {
                                     <button
                                         type="button"
                                         onClick={() => setShowConfirm(!showConfirm)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-300"
                                         aria-label={showConfirm ? "Hide password" : "Show password"}
                                     >
-                                        {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                     </button>
                                 </div>
                                 {confirmPassword && !passwordsMatch && (
@@ -340,7 +342,7 @@ export default function MasterKeySetup() {
                     {step === 'recovery' && (
                         <div className="space-y-6">
                             {/* Codes grid */}
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 {recoveryCodes.map((code, index) => (
                                     <div
                                         key={index}
@@ -356,6 +358,7 @@ export default function MasterKeySetup() {
                             <div className="flex gap-2">
                                 <Button
                                     variant="outline"
+                                    size="lg"
                                     onClick={handleCopyAll}
                                     className="flex-1 border-slate-600 text-slate-200 hover:bg-slate-700"
                                 >
@@ -368,6 +371,7 @@ export default function MasterKeySetup() {
                                 </Button>
                                 <Button
                                     variant="outline"
+                                    size="lg"
                                     onClick={handleDownload}
                                     className="flex-1 border-slate-600 text-slate-200 hover:bg-slate-700"
                                 >

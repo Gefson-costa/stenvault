@@ -4,10 +4,11 @@
  * Drag and drop zone for file uploads.
  */
 
-import { forwardRef } from 'react';
-import { Upload } from 'lucide-react';
+import { forwardRef, useRef } from 'react';
+import { Upload, Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useIsMobile } from '@/hooks/useMobile';
 
 interface DropZoneProps {
     isDragging: boolean;
@@ -41,6 +42,8 @@ export const DropZone = forwardRef<HTMLInputElement, DropZoneProps>(
         ref
     ) {
         const { theme } = useTheme();
+        const isMobile = useIsMobile();
+        const cameraInputRef = useRef<HTMLInputElement>(null);
 
         return (
             <div
@@ -60,9 +63,20 @@ export const DropZone = forwardRef<HTMLInputElement, DropZoneProps>(
                     ref={ref}
                     type="file"
                     multiple
+                    accept="*/*"
                     onChange={onFileChange}
                     className="hidden"
                 />
+                {isMobile && (
+                    <input
+                        ref={cameraInputRef}
+                        type="file"
+                        accept="image/*,video/*"
+                        capture="environment"
+                        onChange={onFileChange}
+                        className="hidden"
+                    />
+                )}
                 {folderInputRef && (
                     <input
                         ref={folderInputRef}
@@ -87,22 +101,40 @@ export const DropZone = forwardRef<HTMLInputElement, DropZoneProps>(
 
                     <div className="text-center space-y-2">
                         <p className="text-lg font-medium text-foreground">
-                            {isDragging ? 'Drop files here' : 'Drag & drop files here'}
+                            {isDragging ? 'Drop files here' : isMobile ? 'Tap to upload files' : 'Drag & drop files here'}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                            or <span className="text-primary hover:underline">browse</span> to choose files
-                            {onFolderClick && (
+                            {isMobile ? (
                                 <>
-                                    {' '}or{' '}
+                                    or{' '}
                                     <span
                                         className="text-primary hover:underline"
-                                        onClick={(e) => { e.stopPropagation(); onFolderClick(); }}
+                                        onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}
                                         role="button"
                                         tabIndex={0}
-                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onFolderClick(); } }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); cameraInputRef.current?.click(); } }}
                                     >
-                                        upload a folder
+                                        <Camera className="w-4 h-4 inline mr-1" />
+                                        take a photo
                                     </span>
+                                </>
+                            ) : (
+                                <>
+                                    or <span className="text-primary hover:underline">browse</span> to choose files
+                                    {onFolderClick && (
+                                        <>
+                                            {' '}or{' '}
+                                            <span
+                                                className="text-primary hover:underline"
+                                                onClick={(e) => { e.stopPropagation(); onFolderClick(); }}
+                                                role="button"
+                                                tabIndex={0}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onFolderClick(); } }}
+                                            >
+                                                upload a folder
+                                            </span>
+                                        </>
+                                    )}
                                 </>
                             )}
                         </p>

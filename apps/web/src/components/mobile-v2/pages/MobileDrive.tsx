@@ -36,6 +36,15 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { useMobileDrive } from "./hooks/useMobileDrive";
 import { useBatchTimestampStatus } from "@/hooks/useTimestamp";
 import { useFavoriteToggle } from "@/hooks/useFavoriteToggle";
@@ -87,6 +96,9 @@ export function MobileDrive({ organizationId: propOrgId }: MobileDriveProps = {}
         handleFolderLongPress,
         handleFileAction,
         handleDelete,
+        handleRename,
+        closeRenameDialog,
+        renameDialog,
         handleBack,
         closePreview,
         closeShare,
@@ -100,6 +112,8 @@ export function MobileDrive({ organizationId: propOrgId }: MobileDriveProps = {}
         openTimestamp,
         getFolderDisplayName,
     } = useMobileDrive(initialFolderId, effectiveOrgId);
+
+    const [renameValue, setRenameValue] = useState("");
 
     // Batch timestamp status for all files
     const fileIds = files.map(f => f.id);
@@ -212,6 +226,33 @@ export function MobileDrive({ organizationId: propOrgId }: MobileDriveProps = {}
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
+
+                {/* Rename Dialog */}
+                <Dialog
+                    open={renameDialog.open}
+                    onOpenChange={(open) => {
+                        if (!open) closeRenameDialog();
+                        else if (renameDialog.item) setRenameValue(renameDialog.item.name);
+                    }}
+                >
+                    <DialogContent className="max-w-[92vw] sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Rename {renameDialog.type}</DialogTitle>
+                        </DialogHeader>
+                        <Input
+                            value={renameValue || renameDialog.item?.name || ''}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            placeholder="New name"
+                            autoFocus
+                            onFocus={() => { if (!renameValue && renameDialog.item) setRenameValue(renameDialog.item.name); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && renameValue.trim()) handleRename(renameValue); }}
+                        />
+                        <DialogFooter className="gap-2">
+                            <Button variant="outline" onClick={closeRenameDialog}>Cancel</Button>
+                            <Button onClick={() => handleRename(renameValue)} disabled={!renameValue.trim()}>Rename</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Timestamp Details Dialog */}
                 {timestampFile && (

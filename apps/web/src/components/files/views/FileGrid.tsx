@@ -208,7 +208,7 @@ export function FileGrid({
                             {/* Selection Checkbox */}
                             {isSelected && onToggleSelection && (
                                 <div
-                                    className="absolute top-2 left-2 z-10"
+                                    className="absolute top-1 left-1 z-10 min-w-[44px] min-h-[44px] flex items-center justify-center"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onToggleSelection(file.id);
@@ -218,7 +218,7 @@ export function FileGrid({
                                         type="checkbox"
                                         checked={isSelected(file.id)}
                                         onChange={() => { }}
-                                        className="w-5 h-5 cursor-pointer accent-primary"
+                                        className="w-6 h-6 cursor-pointer accent-primary"
                                     />
                                 </div>
                             )}

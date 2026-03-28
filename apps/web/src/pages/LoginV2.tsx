@@ -223,8 +223,9 @@ export default function LoginV2() {
                                 placeholder="000000"
                                 value={otp}
                                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                className="w-full text-center text-2xl tracking-[0.5em] font-mono h-14 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                className="w-full text-center text-xl sm:text-2xl tracking-[0.5em] font-mono h-14 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                 maxLength={6}
+                                autoComplete="one-time-code"
                                 autoFocus
                             />
                             <p className="text-xs text-slate-500 text-center">

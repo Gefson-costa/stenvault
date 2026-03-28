@@ -150,6 +150,7 @@ export default function RegisterV2() {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder="Create a login password"
+                            autoComplete="new-password"
                             required
                         />
                         <AuthInput
@@ -159,6 +160,7 @@ export default function RegisterV2() {
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             placeholder="••••••••"
+                            autoComplete="new-password"
                             required
                         />
                     </div>

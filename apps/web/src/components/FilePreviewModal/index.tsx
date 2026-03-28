@@ -356,7 +356,7 @@ export function FilePreviewModal({ file, open, onClose, mode = 'preview' }: File
                 showCloseButton={false}
                 aria-describedby={undefined}
             >
-                <div ref={containerRef} className="flex flex-col h-full bg-background">
+                <div ref={containerRef} className="flex flex-col h-full bg-background safe-top safe-bottom">
                     {/* Header */}
                     <PreviewHeader
                         filename={displayFilename}
@@ -466,6 +466,8 @@ export function FilePreviewModal({ file, open, onClose, mode = 'preview' }: File
                                 onLoad={() => mediaControls.setLoading(false)}
                                 onError={handleImageError}
                                 onDownload={handleDownload}
+                                onZoomTo={imageControls.zoomTo}
+                                onResetZoom={imageControls.reset}
                             />
                         )}
 

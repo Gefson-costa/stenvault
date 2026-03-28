@@ -432,7 +432,7 @@ export function SecuritySettings() {
 
             {/* MFA Setup Dialog */}
             <Dialog open={mfaSetupOpen} onOpenChange={(open) => !open && handleCloseSetup()}>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <QrCode className="w-5 h-5" />
@@ -529,15 +529,33 @@ export function SecuritySettings() {
                             /* QR Code and Verification */
                             <>
                                 <div className="flex flex-col items-center gap-4 p-4 bg-muted rounded-lg">
+                                    {/* Manual entry — primary on mobile (can't scan own screen) */}
+                                    <div className="w-full">
+                                        <p className="text-sm font-medium mb-2 text-center">Enter this code in your authenticator app:</p>
+                                        <div className="flex items-center gap-2">
+                                            <code className="flex-1 text-xs bg-background px-3 py-2 rounded border break-all text-center font-mono">
+                                                {mfaSecret}
+                                            </code>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(mfaSecret);
+                                                    toast.success("Secret key copied to clipboard");
+                                                }}
+                                            >
+                                                <Copy className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* QR Code — secondary (useful when setting up from desktop) */}
                                     <div className="bg-white p-4 rounded-lg">
                                         <QRCodeSVG value={qrCodeUrl} size={192} />
                                     </div>
-                                    <div className="text-center">
-                                        <p className="text-sm font-medium mb-1">Can't scan? Enter this code manually:</p>
-                                        <code className="text-xs bg-background px-2 py-1 rounded">
-                                            {mfaSecret}
-                                        </code>
-                                    </div>
+                                    <p className="text-xs text-muted-foreground text-center">
+                                        Or scan this QR code from another device
+                                    </p>
                                 </div>
 
                                 <div className="space-y-2">

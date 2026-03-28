@@ -189,7 +189,7 @@ export function P2PShareModal({
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className={modalState.isShamir && modalState.isSessionActive ? "sm:max-w-2xl" : "sm:max-w-md"}>
+            <DialogContent className={`max-w-[92vw] ${modalState.isShamir && modalState.isSessionActive ? "sm:max-w-2xl" : "sm:max-w-md"}`}>
                 {/* Header */}
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">

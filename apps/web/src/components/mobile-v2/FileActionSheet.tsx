@@ -9,7 +9,7 @@ import { motion } from "framer-motion";
 import {
     Download,
     Share2,
-    // Pencil, FolderInput - temporarily removed (rename/move not implemented)
+    Pencil,
     Trash2,
     Eye,
     Info,
@@ -116,20 +116,12 @@ const actions: ActionItem[] = [
         description: "Proof of existence via Bitcoin",
         condition: (f) => !f.isFolder,
     },
-    // NOTE: Rename and Move are hidden until implemented
-    // Uncomment these when the functionality is ready:
-    // {
-    //     id: "rename",
-    //     icon: Pencil,
-    //     label: "Renomear",
-    //     description: "Alterar nome",
-    // },
-    // {
-    //     id: "move",
-    //     icon: FolderInput,
-    //     label: "Mover",
-    //     description: "Mover para outra pasta",
-    // },
+    {
+        id: "rename",
+        icon: Pencil,
+        label: "Rename",
+        description: "Change name",
+    },
     {
         id: "info",
         icon: Info,

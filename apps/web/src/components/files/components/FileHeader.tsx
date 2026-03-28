@@ -4,6 +4,7 @@
  * Header for FileList with breadcrumbs, view toggle, and filters.
  */
 
+import { useState } from 'react';
 import { ChevronRight, Grid3X3, List, Images, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FilterPanel, type FileFilters } from '@/components/filters/FilterPanel';
@@ -27,6 +28,8 @@ export function FileHeader({
     onFiltersChange,
     onFolderClick,
 }: FileHeaderProps) {
+    const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+
     const activeFilterCount =
         filters.fileTypes.length +
         (filters.dateRange !== 'all' ? 1 : 0) +
@@ -36,10 +39,38 @@ export function FileHeader({
 
     return (
         <>
+            {/* Mobile search bar */}
+            {mobileSearchOpen && (
+                <div className="flex items-center gap-2 md:hidden mb-2">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                            type="text"
+                            placeholder="Search files..."
+                            value={filters.searchQuery || ''}
+                            onChange={(e) => onFiltersChange({ ...filters, searchQuery: e.target.value })}
+                            className="pl-9 pr-8"
+                            autoFocus
+                        />
+                        {filters.searchQuery && filters.searchQuery.trim() && (
+                            <button
+                                onClick={() => onFiltersChange({ ...filters, searchQuery: '' })}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => { setMobileSearchOpen(false); onFiltersChange({ ...filters, searchQuery: '' }); }}>
+                        <X className="w-4 h-4" />
+                    </Button>
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 {/* Breadcrumbs */}
-                <nav className="flex items-center space-x-1 text-sm" aria-label="Folder navigation">
-                    <ol className="flex items-center space-x-1">
+                <nav className="flex items-center space-x-1 text-sm overflow-x-auto scrollbar-none max-w-[50vw] md:max-w-none" aria-label="Folder navigation">
+                    <ol className="flex items-center space-x-1 whitespace-nowrap">
                         {breadcrumbs.map((crumb, index) => {
                             const isCurrentPage = index === breadcrumbs.length - 1;
                             return (
@@ -68,7 +99,7 @@ export function FileHeader({
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
                             type="text"
-                            placeholder="Pesquisar arquivos..."
+                            placeholder="Search files..."
                             value={filters.searchQuery || ''}
                             onChange={(e) => onFiltersChange({ ...filters, searchQuery: e.target.value })}
                             className="pl-9 pr-8 h-9"
@@ -76,13 +107,24 @@ export function FileHeader({
                         {filters.searchQuery && filters.searchQuery.trim() && (
                             <button
                                 onClick={() => onFiltersChange({ ...filters, searchQuery: '' })}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
                             >
                                 <X className="w-4 h-4" />
                             </button>
                         )}
                     </div>
                 </div>
+
+                {/* Mobile search toggle */}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="md:hidden h-9 w-9"
+                    onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
+                    aria-label="Search files"
+                >
+                    <Search className="w-4 h-4" />
+                </Button>
 
                 {/* Actions */}
                 <div className="flex items-center gap-2">

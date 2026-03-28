@@ -133,7 +133,7 @@ export function Header() {
 
                 {/* Mobile toggle */}
                 <button
-                    className="md:hidden text-white p-2 cursor-pointer"
+                    className="md:hidden text-white p-3 cursor-pointer"
                     onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                     aria-label={
                         isMobileMenuOpen ? 'Close menu' : 'Open menu'

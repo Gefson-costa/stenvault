@@ -144,8 +144,9 @@ export function VaultUnlockModal({
                                 onChange={(e) => setPassword(e.target.value)}
                                 onKeyDown={handleKeyDown}
                                 disabled={isDerivingKey}
+                                size="lg"
                                 className={cn(
-                                    'pr-10',
+                                    'pr-12',
                                     error && 'border-red-500 focus-visible:ring-red-500'
                                 )}
                                 autoFocus
@@ -154,16 +155,16 @@ export function VaultUnlockModal({
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                                className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9"
                                 onClick={() => setShowPassword(!showPassword)}
                                 disabled={isDerivingKey}
                                 tabIndex={-1}
                                 aria-label={showPassword ? "Hide password" : "Show password"}
                             >
                                 {showPassword ? (
-                                    <EyeOff className="h-4 w-4" />
+                                    <EyeOff className="h-5 w-5" />
                                 ) : (
-                                    <Eye className="h-4 w-4" />
+                                    <Eye className="h-5 w-5" />
                                 )}
                             </Button>
                         </div>
@@ -191,6 +192,7 @@ export function VaultUnlockModal({
                         onClick={handleUnlock}
                         disabled={isDerivingKey || !password.trim()}
                         disableAnimation
+                        size="lg"
                         className="w-full"
                     >
                         {isDerivingKey ? (
@@ -220,7 +222,7 @@ export function VaultUnlockModal({
                             <button
                                 type="button"
                                 onClick={onForgotPassword}
-                                className="text-sm text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 underline underline-offset-4 transition-colors"
+                                className="text-sm text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 underline underline-offset-4 transition-colors py-2 px-1"
                                 disabled={isDerivingKey}
                             >
                                 Forgot your password? Use a recovery code

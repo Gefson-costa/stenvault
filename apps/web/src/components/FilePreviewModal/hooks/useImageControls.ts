@@ -11,6 +11,7 @@ interface UseImageControlsReturn {
     state: ImageState;
     zoomIn: () => void;
     zoomOut: () => void;
+    zoomTo: (value: number) => void;
     rotate: () => void;
     reset: () => void;
     setError: (error: string | null) => void;
@@ -33,6 +34,10 @@ export function useImageControls(): UseImageControlsReturn {
         setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM));
     }, []);
 
+    const zoomTo = useCallback((value: number) => {
+        setZoom(Math.max(MIN_ZOOM, Math.min(value, MAX_ZOOM)));
+    }, []);
+
     const rotate = useCallback(() => {
         setRotation((r) => (r + 90) % 360);
     }, []);
@@ -47,6 +52,7 @@ export function useImageControls(): UseImageControlsReturn {
         state: { zoom, rotation, error },
         zoomIn,
         zoomOut,
+        zoomTo,
         rotate,
         reset,
         setError,

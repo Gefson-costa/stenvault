@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Download, ImageOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useGestures } from '@/hooks/useGestures';
 import type { ImageState } from '../types';
 
 interface ImageViewerProps {
@@ -16,6 +17,8 @@ interface ImageViewerProps {
     onLoad: () => void;
     onError: (message: string) => void;
     onDownload: () => void;
+    onZoomTo?: (scale: number) => void;
+    onResetZoom?: () => void;
 }
 
 /** Timeout for image loading - if image hasn't loaded in 30s, show error */
@@ -28,10 +31,14 @@ export function ImageViewer({
     onLoad,
     onError,
     onDownload,
+    onZoomTo,
+    onResetZoom,
 }: ImageViewerProps) {
     const { zoom, rotation, error } = imageState;
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const loadedRef = useRef(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const baseZoomRef = useRef(1);
     // Use ref for onError to avoid resetting timeout when parent re-renders
     const onErrorRef = useRef(onError);
     onErrorRef.current = onError;
@@ -69,6 +76,25 @@ export function ImageViewer({
         onErrorRef.current('Failed to load image. The file may be corrupted or in an unsupported format. Try downloading it instead.');
     }, []);
 
+    // Pinch-to-zoom and double-tap gestures
+    useGestures(containerRef as React.RefObject<HTMLElement>, {
+        onPinch: (scale) => {
+            onZoomTo?.(baseZoomRef.current * scale);
+        },
+        onDoubleTap: () => {
+            if (zoom !== 1) {
+                onResetZoom?.();
+            } else {
+                onZoomTo?.(2);
+            }
+        },
+    });
+
+    // Track base zoom when pinch starts
+    useEffect(() => {
+        baseZoomRef.current = zoom;
+    }, [zoom]);
+
     if (error) {
         return (
             <div className="flex flex-col items-center justify-center gap-4 p-6 w-full h-full">
@@ -84,7 +110,7 @@ export function ImageViewer({
     }
 
     return (
-        <div className="relative overflow-auto w-full h-full flex items-center justify-center">
+        <div ref={containerRef} className="relative overflow-auto w-full h-full flex items-center justify-center touch-none">
             <img
                 src={mediaUrl}
                 alt={filename}

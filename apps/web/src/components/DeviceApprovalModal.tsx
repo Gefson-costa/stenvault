@@ -272,7 +272,6 @@ export default function DeviceApprovalModal({
                                 <div className="flex gap-2">
                                     <Button
                                         variant="outline"
-                                        size="sm"
                                         className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
                                         onClick={() => handleReject(device)}
                                         disabled={processingId !== null}
@@ -285,7 +284,6 @@ export default function DeviceApprovalModal({
                                         Reject
                                     </Button>
                                     <Button
-                                        size="sm"
                                         className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                                         onClick={() => handleApprove(device)}
                                         disabled={processingId !== null}

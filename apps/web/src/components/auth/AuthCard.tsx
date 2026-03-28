@@ -75,7 +75,7 @@ export function AuthInput({
         <div className="space-y-2.5">
             <label
                 htmlFor={id}
-                className="block text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500 ml-1"
+                className="block text-xs uppercase tracking-[0.2em] font-bold text-slate-500 ml-1"
             >
                 {label}
             </label>
@@ -106,13 +106,13 @@ export function AuthInput({
                     <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors z-30"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-slate-300 transition-colors z-30"
                         aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                         {showPassword ? (
-                            <EyeOff className="w-4 h-4" />
+                            <EyeOff className="w-5 h-5" />
                         ) : (
-                            <Eye className="w-4 h-4" />
+                            <Eye className="w-5 h-5" />
                         )}
                     </button>
                 ) : rightIcon ? (
@@ -121,7 +121,7 @@ export function AuthInput({
                     </div>
                 ) : null}
             </div>
-            {error && <p className="text-[11px] text-red-400/80 font-medium ml-1">{error}</p>}
+            {error && <p className="text-xs text-red-400/80 font-medium ml-1">{error}</p>}
         </div>
     );
 }
@@ -201,7 +201,7 @@ export function AuthDivider({ text = 'Validation' }: { text?: string }) {
     return (
         <div className="relative flex items-center py-6">
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/[0.05] to-transparent" />
-            <span className="px-4 text-[9px] uppercase tracking-[0.3em] text-slate-600 font-black">
+            <span className="px-4 text-[11px] uppercase tracking-[0.3em] text-slate-600 font-black">
                 {text}
             </span>
             <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/[0.05] to-transparent" />

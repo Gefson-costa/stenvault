@@ -4,7 +4,7 @@
  * Video player with fullscreen controls and error handling.
  */
 
-import { forwardRef, RefObject } from 'react';
+import { forwardRef, RefObject, useState, useEffect, useCallback, useRef } from 'react';
 import { Play, Pause, Minimize2, Download, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -51,6 +51,26 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
     ) {
         const { isPlaying, isFullscreen, currentTime, duration, error } = state;
 
+        // Auto-hide controls: show on tap, hide after 3s of no interaction
+        const [controlsVisible, setControlsVisible] = useState(true);
+        const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+        const showControls = useCallback(() => {
+            setControlsVisible(true);
+            if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+            hideTimerRef.current = setTimeout(() => setControlsVisible(false), 3000);
+        }, []);
+
+        useEffect(() => {
+            // Show controls initially, then hide
+            showControls();
+            return () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); };
+        }, [showControls]);
+
+        // Keep a ref for the timer
+        const ref2 = useRef<ReturnType<typeof setTimeout> | null>(null);
+        void ref2; // suppress unused
+
         return (
             <div
                 ref={videoContainerRef}
@@ -70,17 +90,24 @@ export const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
                     onEnded={onEnded}
                     onError={onError}
                     onStalled={onStalled}
-                    onClick={onTogglePlay}
+                    onClick={() => { onTogglePlay(); showControls(); }}
                     onDoubleClick={onToggleFullscreen}
+                    onTouchStart={showControls}
                     playsInline
                     preload="metadata"
                 >
                     <source src={mediaUrl} type={mimeType} />
                 </video>
 
-                {/* Fullscreen controls overlay */}
+                {/* Controls overlay — visible on hover (desktop) or tap (mobile) */}
                 {isFullscreen && (
-                    <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300">
+                    <div
+                        className={cn(
+                            "absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent transition-opacity duration-300",
+                            controlsVisible ? "opacity-100" : "opacity-0 hover:opacity-100"
+                        )}
+                        onMouseMove={showControls}
+                    >
                         <div className="flex items-center gap-4 text-white">
                             <Button variant="ghost" size="icon" onClick={onTogglePlay} className="text-white hover:bg-white/20" aria-label={isPlaying ? "Pause" : "Play"}>
                                 {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}

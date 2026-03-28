@@ -38,6 +38,12 @@ interface DeleteDialogState {
     item: { id: number; name: string } | null;
 }
 
+interface RenameDialogState {
+    open: boolean;
+    type: 'file' | 'folder';
+    item: { id: number; name: string } | null;
+}
+
 export function useMobileDrive(initialFolderId: number | null = null, organizationId?: number | null) {
     // Current folder state
     const [currentFolderId, setCurrentFolderId] = useState<number | null>(initialFolderId);
@@ -63,6 +69,13 @@ export function useMobileDrive(initialFolderId: number | null = null, organizati
 
     // Delete state
     const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState>({
+        open: false,
+        type: 'file',
+        item: null,
+    });
+
+    // Rename state
+    const [renameDialog, setRenameDialog] = useState<RenameDialogState>({
         open: false,
         type: 'file',
         item: null,
@@ -138,6 +151,24 @@ export function useMobileDrive(initialFolderId: number | null = null, organizati
         onError: (error) => {
             toast.error(error.message);
         },
+    });
+
+    const renameFile = trpc.files.rename.useMutation({
+        onSuccess: () => {
+            toast.success('File renamed');
+            utils.files.list.invalidate();
+            setRenameDialog({ open: false, type: 'file', item: null });
+        },
+        onError: (error) => toast.error(error.message),
+    });
+
+    const renameFolder = trpc.folders.rename.useMutation({
+        onSuccess: () => {
+            toast.success('Folder renamed');
+            utils.folders.list.invalidate();
+            setRenameDialog({ open: false, type: 'folder', item: null });
+        },
+        onError: (error) => toast.error(error.message),
     });
 
     const deleteFolder = trpc.folders.delete.useMutation({
@@ -250,8 +281,14 @@ export function useMobileDrive(initialFolderId: number | null = null, organizati
                 setShowTimestamp(true);
                 break;
             case "rename":
+                setRenameDialog({
+                    open: true,
+                    type: file.isFolder ? 'folder' : 'file',
+                    item: { id: file.id, name: file.name },
+                });
+                break;
             case "move":
-                // Not yet implemented on mobile — actions hidden in FileActionSheet
+                // Move requires folder picker — not yet implemented
                 break;
             case "delete":
                 setDeleteDialog({
@@ -271,6 +308,20 @@ export function useMobileDrive(initialFolderId: number | null = null, organizati
                 toast.info(`Action: ${action}`);
         }
     }, [filesData, handleDownload]);
+
+    const handleRename = useCallback((newName: string) => {
+        if (!renameDialog.item || !newName.trim()) return;
+
+        if (renameDialog.type === 'file') {
+            renameFile.mutate({ fileId: renameDialog.item.id, newName: newName.trim() });
+        } else {
+            renameFolder.mutate({ folderId: renameDialog.item.id, newName: newName.trim() });
+        }
+    }, [renameDialog, renameFile, renameFolder]);
+
+    const closeRenameDialog = useCallback(() => {
+        setRenameDialog({ open: false, type: 'file', item: null });
+    }, []);
 
     const handleDelete = useCallback(() => {
         if (!deleteDialog.item) return;
@@ -367,6 +418,7 @@ export function useMobileDrive(initialFolderId: number | null = null, organizati
         timestampFile,
         showTimestamp,
         deleteDialog,
+        renameDialog,
 
         // Data
         folders,
@@ -387,6 +439,8 @@ export function useMobileDrive(initialFolderId: number | null = null, organizati
         handleFolderLongPress,
         handleFileAction,
         handleDelete,
+        handleRename,
+        closeRenameDialog,
         handleBack,
         closePreview,
         closeShare,
