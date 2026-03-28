@@ -1,37 +1,37 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://stenvault.up.railway.app/landing</loc>
+    <loc>https://stenvault.com/landing</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://stenvault.up.railway.app/pricing</loc>
+    <loc>https://stenvault.com/pricing</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://stenvault.up.railway.app/terms</loc>
+    <loc>https://stenvault.com/terms</loc>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://stenvault.up.railway.app/privacy</loc>
+    <loc>https://stenvault.com/privacy</loc>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://stenvault.up.railway.app/send</loc>
+    <loc>https://stenvault.com/send</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://stenvault.up.railway.app/auth/login</loc>
+    <loc>https://stenvault.com/auth/login</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://stenvault.up.railway.app/auth/register</loc>
+    <loc>https://stenvault.com/auth/register</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

@@ -10,4 +10,4 @@ Disallow: /settings
 Disallow: /admin
 Disallow: /ops-deck
 
-Sitemap: https://stenvault.up.railway.app/sitemap.xml
+Sitemap: https://stenvault.com/sitemap.xml
