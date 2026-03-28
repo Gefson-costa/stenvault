@@ -52,7 +52,7 @@ export default function OpsDeck() {
         chats: 0,
     });
     const [lastHeartbeat, setLastHeartbeat] = useState<Date | null>(null);
-    const eventSourceRef = useRef<EventSource | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
 
     const getStatusColor = useCallback(() => {
         if (!metrics) return 'text-gray-500';
@@ -75,77 +75,95 @@ export default function OpsDeck() {
     };
 
     const connect = useCallback(() => {
-        if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
-        }
+        abortRef.current?.abort();
         setIsConnecting(true);
 
         const apiUrl = import.meta.env.VITE_API_URL || '';
-        const es = new EventSource(`${apiUrl}/api/ops/pulse?secret=${secret}`);
+        const controller = new AbortController();
+        abortRef.current = controller;
 
-        es.addEventListener('history', (e: MessageEvent) => {
-            const history = JSON.parse(e.data) as PulseEvent[];
-            setEvents(history);
-            setIsAuthenticated(true);
-            setIsConnecting(false);
-            localStorage.setItem('ops_secret', secret);
+        // fetch-based SSE: sends secret via header instead of URL query string
+        (async () => {
+            try {
+                const res = await fetch(`${apiUrl}/api/ops/pulse`, {
+                    headers: { 'x-ops-secret': secret },
+                    signal: controller.signal,
+                });
 
-            // Calculate initial stats from history
-            const initialStats = history.reduce((acc: typeof stats, event: PulseEvent) => ({
-                errors: acc.errors + (event.type === 'error' || event.severity === 'error' || event.severity === 'critical' ? 1 : 0),
-                uploads: acc.uploads + (event.data?.direction === 'up' ? 1 : 0),
-                downloads: acc.downloads + (event.data?.direction === 'down' ? 1 : 0),
-                chats: acc.chats + (event.type === 'chat' ? 1 : 0),
-            }), { errors: 0, uploads: 0, downloads: 0, chats: 0 });
-            setStats(initialStats);
-        });
+                if (!res.ok || !res.body) {
+                    toast.error('Connection failed. Incorrect secret?');
+                    setIsConnecting(false);
+                    setIsAuthenticated(false);
+                    return;
+                }
 
-        es.addEventListener('metrics', (e: MessageEvent) => {
-            const newMetrics = JSON.parse(e.data) as SystemMetrics;
-            setMetrics(newMetrics);
-        });
+                sessionStorage.setItem('ops_secret', secret);
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
 
-        es.addEventListener('pulse', (e: MessageEvent) => {
-            const newEvent = JSON.parse(e.data) as PulseEvent;
-            setEvents(prev => [newEvent, ...prev].slice(0, 100));
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
 
-            // Update stats
-            setStats(prev => ({
-                errors: (newEvent.type === 'error' || newEvent.severity === 'error' || newEvent.severity === 'critical') ? prev.errors + 1 : prev.errors,
-                uploads: newEvent.data?.direction === 'up' ? prev.uploads + 1 : prev.uploads,
-                downloads: newEvent.data?.direction === 'down' ? prev.downloads + 1 : prev.downloads,
-                chats: newEvent.type === 'chat' ? prev.chats + 1 : prev.chats,
-            }));
-        });
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop() || '';
 
-        es.addEventListener('heartbeat', (e: MessageEvent) => {
-            setLastHeartbeat(new Date(e.data));
-        });
+                    for (const part of parts) {
+                        const eventMatch = part.match(/^event: (.+)$/m);
+                        const dataMatch = part.match(/^data: (.+)$/m);
+                        if (!eventMatch || !dataMatch) continue;
 
-        es.onerror = () => {
-            setIsConnecting(false);
-            if (es.readyState === EventSource.CLOSED) {
-                // SSE closed by server or network — noop
-            } else {
-                toast.error('Connection failed. Incorrect secret?');
-                setIsAuthenticated(false);
+                        const eventType = eventMatch[1]!;
+                        const data = JSON.parse(dataMatch[1]!);
+
+                        if (eventType === 'history') {
+                            const history = data as PulseEvent[];
+                            setEvents(history);
+                            setIsAuthenticated(true);
+                            setIsConnecting(false);
+                            const initialStats = history.reduce((acc: typeof stats, event: PulseEvent) => ({
+                                errors: acc.errors + (event.type === 'error' || event.severity === 'error' || event.severity === 'critical' ? 1 : 0),
+                                uploads: acc.uploads + (event.data?.direction === 'up' ? 1 : 0),
+                                downloads: acc.downloads + (event.data?.direction === 'down' ? 1 : 0),
+                                chats: acc.chats + (event.type === 'chat' ? 1 : 0),
+                            }), { errors: 0, uploads: 0, downloads: 0, chats: 0 });
+                            setStats(initialStats);
+                        } else if (eventType === 'metrics') {
+                            setMetrics(data as SystemMetrics);
+                        } else if (eventType === 'pulse') {
+                            const newEvent = data as PulseEvent;
+                            setEvents(prev => [newEvent, ...prev].slice(0, 100));
+                            setStats(prev => ({
+                                errors: (newEvent.type === 'error' || newEvent.severity === 'error' || newEvent.severity === 'critical') ? prev.errors + 1 : prev.errors,
+                                uploads: newEvent.data?.direction === 'up' ? prev.uploads + 1 : prev.uploads,
+                                downloads: newEvent.data?.direction === 'down' ? prev.downloads + 1 : prev.downloads,
+                                chats: newEvent.type === 'chat' ? prev.chats + 1 : prev.chats,
+                            }));
+                        } else if (eventType === 'heartbeat') {
+                            setLastHeartbeat(new Date(data));
+                        }
+                    }
+                }
+            } catch (err: unknown) {
+                if ((err as Error).name !== 'AbortError') {
+                    toast.error('Connection lost');
+                    setIsAuthenticated(false);
+                }
+            } finally {
+                setIsConnecting(false);
             }
-            es.close();
-            eventSourceRef.current = null;
-        };
-
-        eventSourceRef.current = es;
+        })();
     }, [secret]);
 
     useEffect(() => {
-        const savedSecret = localStorage.getItem('ops_secret');
+        const savedSecret = sessionStorage.getItem('ops_secret');
         if (savedSecret) {
             setSecret(savedSecret);
         }
         return () => {
-            eventSourceRef.current?.close();
-            eventSourceRef.current = null;
+            abortRef.current?.abort();
         };
     }, []);
 

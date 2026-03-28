@@ -9,25 +9,7 @@
  */
 
 /* ═══════════ FONT FACE DECLARATIONS ═══════════ */
-
-@font-face {
-  font-family: 'Geist';
-  src: url('https://cdn.jsdelivr.net/fontsource/fonts/geist:vf@latest/latin-wght-normal.woff2') format('woff2-variations');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Geist Mono';
-  src: url('https://cdn.jsdelivr.net/fontsource/fonts/geist-mono:vf@latest/latin-wght-normal.woff2') format('woff2-variations');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Instrument Serif loaded via Google Fonts CSS in index.html —
-   no @font-face here (hardcoded gstatic URLs go stale when Google bumps the version). */
+/* Self-hosted via @fontsource packages — no external CDN dependencies (Golden Rule 10) */
 
 :root {
   /* ═══════════ FONT FAMILIES ═══════════ */

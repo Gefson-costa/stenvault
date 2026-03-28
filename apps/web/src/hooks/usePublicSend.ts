@@ -427,9 +427,9 @@ export function usePublicSend(): UsePublicSendReturn {
         setShareUrl(url);
         setState("done");
 
-        // Save link to localStorage for reference
+        // Save session reference to localStorage (without key fragment — never persist key material)
         try {
-          localStorage.setItem(`send:links:${sessionId}`, url);
+          localStorage.setItem(`send:links:${sessionId}`, `${baseUrl}/send/${sessionId}`);
         } catch {
           // localStorage full — best effort
         }

@@ -60,6 +60,7 @@ export function SecuritySettings() {
     const [mfaSetupOpen, setMfaSetupOpen] = useState(false);
     const [mfaDisableOpen, setMfaDisableOpen] = useState(false);
     const [mfaSecret, setMfaSecret] = useState("");
+    const [mfaSetupId, setMfaSetupId] = useState("");
     const [qrCodeUrl, setQrCodeUrl] = useState("");
     const [verificationCode, setVerificationCode] = useState("");
     const [backupCodes, setBackupCodes] = useState<string[]>([]);
@@ -88,6 +89,7 @@ export function SecuritySettings() {
         onSuccess: (data) => {
             setMfaSecret(data.secret);
             setQrCodeUrl(data.qrCodeUrl);
+            if (data.setupId) setMfaSetupId(data.setupId);
             toast.success("QR Code generated! Scan it with your authenticator app.");
         },
         onError: (error) => toast.error(error.message),
@@ -131,6 +133,7 @@ export function SecuritySettings() {
         verifyMfaMutation.mutate({
             secret: mfaSecret,
             token: verificationCode,
+            setupId: mfaSetupId || undefined,
         });
     };
 
@@ -152,6 +155,7 @@ export function SecuritySettings() {
     const handleCloseSetup = () => {
         setMfaSetupOpen(false);
         setMfaSecret("");
+        setMfaSetupId("");
         setQrCodeUrl("");
         setVerificationCode("");
         setBackupCodes([]);
