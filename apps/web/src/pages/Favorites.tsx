@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useIsMobile } from '@/hooks/useMobile';
 import { MobileFavorites } from '@/components/mobile-v2/pages/MobileFavorites';
 import { trpc } from '@/lib/trpc';
+import { useCurrentOrgId } from '@/contexts/OrganizationContext';
 import { formatBytes } from '@stenvault/shared';
 import {
     Star,
@@ -43,9 +44,10 @@ function getFileTypeIcon(fileType: string) {
 export default function Favorites() {
     const isMobile = useIsMobile();
     const { theme } = useTheme();
+    const orgId = useCurrentOrgId();
 
     // Queries
-    const { data: favoriteFiles, isLoading } = trpc.files.listFavorites.useQuery({ limit: 100 });
+    const { data: favoriteFiles, isLoading } = trpc.files.listFavorites.useQuery({ limit: 100, organizationId: orgId });
 
     // Filename decryption
     const { getDisplayName, decryptFilenames } = useFilenameDecryption();

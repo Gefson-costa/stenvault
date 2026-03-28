@@ -83,23 +83,18 @@ export async function initializeOrgVault(
     }
     const { publicKey, secretKey } = await hybridKem.generateKeyPair();
 
-    let x25519Wrapped: Uint8Array;
-    let mlkemIv: Uint8Array;
-    let mlkemCiphertext: Uint8Array;
-    try {
-      // Wrap X25519 secret (32 bytes) with OMK via AES-KW
-      x25519Wrapped = await wrapSecretWithMK(secretKey.classical, omkAesKw);
+    // Wrap X25519 secret (32 bytes) with OMK via AES-KW
+    const x25519Wrapped = await wrapSecretWithMK(secretKey.classical, omkAesKw);
 
-      // Encrypt ML-KEM secret (2400 bytes) with OMK via AES-256-GCM
-      // encryptLargeSecretKey returns [12-byte IV][ciphertext+tag]
-      const mlkemEncryptedFull = await encryptLargeSecretKey(secretKey.postQuantum, omkAesGcm);
-      mlkemIv = mlkemEncryptedFull.slice(0, 12);
-      mlkemCiphertext = mlkemEncryptedFull.slice(12);
-    } finally {
-      // Zero secret key material even if wrapping/encryption threw
-      secretKey.classical.fill(0);
-      secretKey.postQuantum.fill(0);
-    }
+    // Encrypt ML-KEM secret (2400 bytes) with OMK via AES-256-GCM
+    // encryptLargeSecretKey returns [12-byte IV][ciphertext+tag]
+    const mlkemEncryptedFull = await encryptLargeSecretKey(secretKey.postQuantum, omkAesGcm);
+    const mlkemIv = mlkemEncryptedFull.slice(0, 12);
+    const mlkemCiphertext = mlkemEncryptedFull.slice(12);
+
+    // Zero secret key material
+    secretKey.classical.fill(0);
+    secretKey.postQuantum.fill(0);
 
     // Wrap OMK with owner's personal MK via AES-KW
     const omkWrapped = await wrapOMKWithPersonalMK(omkExtractable, personalMKBundle);

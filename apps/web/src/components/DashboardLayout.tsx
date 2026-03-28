@@ -50,6 +50,7 @@ import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { VaultStatusIndicator } from "@/components/VaultStatusIndicator";
 import { VaultSwitcher } from "@/components/VaultSwitcher";
+import { useCurrentOrgId } from "@/contexts/OrganizationContext";
 import { VaultUnlockModal } from "@/components/VaultUnlockModal";
 import { useMasterKey } from "@/hooks/useMasterKey";
 import { toast } from "sonner";
@@ -300,11 +301,22 @@ function DesktopLayoutContent({
   });
   const hasPlanP2P = subscription?.isAdmin || subscription?.features?.p2pQuantumMesh === true;
 
-  // Build grouped menu items based on feature flags + plan
+  const orgId = useCurrentOrgId();
+  const isOrgContext = !!orgId;
+
+  // Paths to hide when in org context (personal-only features)
+  const orgHiddenPaths = new Set(["/chat", "/sends", "/shares"]);
+
+  // Build grouped menu items based on feature flags + plan + org context
   const resolvedGroups = menuGroups.map((group, i) => {
+    let items = group;
+    // Filter personal-only routes in org context
+    if (isOrgContext) {
+      items = items.filter(item => !orgHiddenPaths.has(item.path));
+    }
     // Inject Quantum Mesh only if server-enabled AND plan allows it
-    if (i === 1 && p2pEnabled && hasPlanP2P) return [...group, quantumMeshItem];
-    return group;
+    if (i === 1 && p2pEnabled && hasPlanP2P && !isOrgContext) return [...items, quantumMeshItem];
+    return items;
   });
 
   // Global keyboard shortcuts

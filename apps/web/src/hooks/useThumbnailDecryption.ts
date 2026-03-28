@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useMasterKey } from './useMasterKey';
+import { useOrgMasterKey } from './useOrgMasterKey';
 import { decryptThumbnailFromUrl } from '@/lib/fileCrypto';
 import { debugLog, debugWarn } from '@/lib/debugLogger';
 
@@ -111,6 +112,8 @@ export interface UseThumbnailDecryptionParams {
     thumbnailIv: string | null;
     /** Override fileId for HKDF key derivation (for duplicated files that share the original's thumbnail key) */
     keyDerivationFileId?: number;
+    /** Organization ID — if set, derives thumbnail key from OMK instead of personal MK */
+    organizationId?: number | null;
     /** Whether to auto-fetch on mount */
     autoFetch?: boolean;
 }
@@ -143,6 +146,7 @@ export function useThumbnailDecryption({
     thumbnailUrl,
     thumbnailIv,
     keyDerivationFileId,
+    organizationId,
     autoFetch = true,
 }: UseThumbnailDecryptionParams): UseThumbnailDecryptionReturn {
     const [url, setUrl] = useState<string | null>(() => getCached(fileId));
@@ -150,6 +154,7 @@ export function useThumbnailDecryption({
     const [error, setError] = useState<string | null>(null);
 
     const { deriveThumbnailKey, isUnlocked } = useMasterKey();
+    const { deriveOrgThumbnailKey, unlockOrgVault, isOrgUnlocked } = useOrgMasterKey();
     const decryptionInProgress = useRef(false);
 
     const decrypt = useCallback(async () => {
@@ -181,8 +186,15 @@ export function useThumbnailDecryption({
         setError(null);
 
         try {
-            // Derive thumbnail key from Master Key (use original fileId for duplicates)
-            const thumbnailKey = await deriveThumbnailKey((keyDerivationFileId ?? fileId).toString());
+            // Derive thumbnail key — org key if org file, personal key otherwise
+            const derivationId = (keyDerivationFileId ?? fileId).toString();
+            let thumbnailKey: CryptoKey;
+            if (organizationId) {
+                await unlockOrgVault(organizationId);
+                thumbnailKey = await deriveOrgThumbnailKey(organizationId, derivationId);
+            } else {
+                thumbnailKey = await deriveThumbnailKey(derivationId);
+            }
 
             // Fetch and decrypt thumbnail
             const decryptedBlob = await decryptThumbnailFromUrl(
@@ -207,7 +219,7 @@ export function useThumbnailDecryption({
             setIsLoading(false);
             decryptionInProgress.current = false;
         }
-    }, [fileId, thumbnailUrl, thumbnailIv, keyDerivationFileId, isUnlocked, deriveThumbnailKey]);
+    }, [fileId, thumbnailUrl, thumbnailIv, keyDerivationFileId, organizationId, isUnlocked, deriveThumbnailKey, deriveOrgThumbnailKey, unlockOrgVault]);
 
     const clear = useCallback(() => {
         const cached = getCached(fileId);

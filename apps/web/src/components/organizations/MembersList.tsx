@@ -29,6 +29,9 @@ import {
 import { useOrganizationMembers, useOrganizationMutations } from "../../hooks/organizations/useOrganizations";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
+import { trpc } from "@/lib/trpc";
+import { useOrgMasterKey } from "@/hooks/useOrgMasterKey";
+import { buildRotationPayload } from "@/lib/orgKeyRotation";
 
 interface MembersListProps {
     organizationId: number;
@@ -57,6 +60,9 @@ const roleBadgeVariants = {
 export function MembersList({ organizationId, currentUserRole, currentUserId }: MembersListProps) {
     const { data: members, isLoading, refetch } = useOrganizationMembers(organizationId);
     const { removeMember, updateMemberRole, transferOwnership } = useOrganizationMutations();
+    const utils = trpc.useUtils();
+    const rotateOMK = trpc.orgKeys.rotateOMK.useMutation();
+    const { unlockOrgVault, getOrgMasterKey } = useOrgMasterKey();
 
     const [confirmAction, setConfirmAction] = useState<{
         type: "remove" | "transfer" | "demote";
@@ -76,6 +82,36 @@ export function MembersList({ organizationId, currentUserRole, currentUserId }: 
                 userId: confirmAction.memberId,
             });
             toast.success(`${confirmAction.memberName} has been removed`);
+
+            // Trigger OMK rotation to revoke the removed member's access to new files
+            try {
+                await unlockOrgVault(organizationId);
+
+                // Get remaining members' hybrid public keys
+                const remainingMembers = (members ?? []).filter(
+                    (m: any) => m.userId !== confirmAction.memberId,
+                );
+                const memberPubKeys = await Promise.all(
+                    remainingMembers.map(async (m: any) => {
+                        const pk = await utils.orgKeys.getMemberHybridPublicKey.fetch({
+                            organizationId,
+                            targetUserId: m.userId,
+                        });
+                        return pk;
+                    }).filter(Boolean),
+                );
+
+                const payload = await buildRotationPayload(
+                    organizationId,
+                    memberPubKeys,
+                    `member_removed: ${confirmAction.memberName}`,
+                );
+                await rotateOMK.mutateAsync(payload);
+                toast.success("Organization keys rotated");
+            } catch (rotErr: any) {
+                console.warn('[MembersList] OMK rotation failed:', rotErr);
+                toast.warning("Member removed, but key rotation failed. Rotate manually from settings.");
+            }
         } catch (error: any) {
             toast.error(error.message || "Failed to remove member");
         } finally {

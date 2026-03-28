@@ -11,6 +11,7 @@ import { trpc } from '@/lib/trpc';
 import { useCurrentOrgId } from '@/contexts/OrganizationContext';
 import { toast } from 'sonner';
 import { useMasterKey } from '@/hooks/useMasterKey';
+import { useOrgMasterKey } from '@/hooks/useOrgMasterKey';
 import { useDirectDownload } from '@/hooks/useDirectDownload';
 import { useFoldernameDecryption } from '@/hooks/useFoldernameDecryption';
 import { useFoldernameMigration } from '@/hooks/useFoldernameMigration';
@@ -82,8 +83,22 @@ export function useDrive() {
 
   // Master Key state
   const { isUnlocked, isConfigured, isLoading: masterKeyLoading, deriveFoldernameKey } = useMasterKey();
+  const { unlockOrgVault, isOrgUnlocked, deriveOrgFoldernameKey } = useOrgMasterKey();
   const { download: directDownload } = useDirectDownload();
   const orgId = useCurrentOrgId();
+
+  // Auto-unlock org vault when personal vault is unlocked and in org context
+  const orgVaultUnlocked = orgId ? isOrgUnlocked(orgId) : true;
+  useEffect(() => {
+    if (orgId && isUnlocked && !orgVaultUnlocked) {
+      unlockOrgVault(orgId).catch((err) => {
+        console.warn('[Drive] Org vault auto-unlock failed:', err);
+      });
+    }
+  }, [orgId, isUnlocked, orgVaultUnlocked, unlockOrgVault]);
+
+  // Effective unlock: personal vault + org vault (if in org context)
+  const effectiveUnlocked = isUnlocked && orgVaultUnlocked;
 
   const utils = trpc.useUtils();
 
@@ -168,19 +183,22 @@ export function useDrive() {
     const trimmedName = newFolderName.trim();
 
     // Encrypt folder name if vault is unlocked
-    if (isUnlocked) {
+    if (effectiveUnlocked) {
       try {
-        const foldernameKey = await deriveFoldernameKey();
+        // Use org foldername key when in org context, personal key otherwise
+        const foldernameKey = orgId
+          ? await deriveOrgFoldernameKey(orgId)
+          : await deriveFoldernameKey();
         const { encryptedFilename: encryptedName, iv: nameIv } = await encryptFilename(trimmedName, foldernameKey);
         createFolder.mutate({
           name: "Folder",
           encryptedName,
           nameIv,
           parentId: currentFolderId,
+          organizationId: orgId,
         });
         return;
       } catch (error) {
-        // Fall through to plaintext if encryption fails
         console.warn('[Drive] Failed to encrypt folder name, falling back to plaintext', error);
       }
     }
@@ -188,8 +206,9 @@ export function useDrive() {
     createFolder.mutate({
       name: trimmedName,
       parentId: currentFolderId,
+      organizationId: orgId,
     });
-  }, [newFolderName, currentFolderId, createFolder, isUnlocked, deriveFoldernameKey]);
+  }, [newFolderName, currentFolderId, createFolder, effectiveUnlocked, orgId, deriveFoldernameKey, deriveOrgFoldernameKey]);
 
   const handleUploadComplete = useCallback(() => {
     utils.files.list.invalidate();
@@ -242,7 +261,7 @@ export function useDrive() {
     // Vault
     unlockModalOpen,
     setUnlockModalOpen,
-    isUnlocked,
+    isUnlocked: effectiveUnlocked,
     isConfigured,
     masterKeyLoading,
 

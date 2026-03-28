@@ -62,15 +62,6 @@ export async function buildRotationPayload(
   memberPublicKeys: MemberPublicKey[],
   reason?: string,
 ): Promise<RotationPayload> {
-  if (memberPublicKeys.length === 0) {
-    throw new Error('Cannot rotate OMK: no members with public keys. At least one member must have a hybrid keypair.');
-  }
-  for (const member of memberPublicKeys) {
-    if (!member.x25519PublicKey || !member.mlkem768PublicKey) {
-      throw new Error(`Member ${member.userId} has incomplete hybrid public key data.`);
-    }
-  }
-
   const omkRaw = crypto.getRandomValues(new Uint8Array(32));
 
   try {
@@ -90,19 +81,14 @@ export async function buildRotationPayload(
     }
     const { publicKey, secretKey } = await hybridKem.generateKeyPair();
 
-    let x25519Wrapped: Uint8Array;
-    let mlkemIv: Uint8Array;
-    let mlkemCiphertext: Uint8Array;
-    try {
-      // Wrap new hybrid secrets with new OMK
-      x25519Wrapped = await wrapSecretWithMK(secretKey.classical, omkAesKw);
-      const mlkemEncryptedFull = await encryptLargeSecretKey(secretKey.postQuantum, omkAesGcm);
-      mlkemIv = mlkemEncryptedFull.slice(0, 12);
-      mlkemCiphertext = mlkemEncryptedFull.slice(12);
-    } finally {
-      secretKey.classical.fill(0);
-      secretKey.postQuantum.fill(0);
-    }
+    // Wrap new hybrid secrets with new OMK
+    const x25519Wrapped = await wrapSecretWithMK(secretKey.classical, omkAesKw);
+    const mlkemEncryptedFull = await encryptLargeSecretKey(secretKey.postQuantum, omkAesGcm);
+    const mlkemIv = mlkemEncryptedFull.slice(0, 12);
+    const mlkemCiphertext = mlkemEncryptedFull.slice(12);
+
+    secretKey.classical.fill(0);
+    secretKey.postQuantum.fill(0);
 
     const fingerprint = await generateKeyFingerprint(publicKey.classical, publicKey.postQuantum);
 

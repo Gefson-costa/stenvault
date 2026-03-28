@@ -14,6 +14,8 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { CreateOrgModal } from "@/components/organizations/CreateOrgModal";
 import { toast } from "sonner";
+import { useMasterKey } from "@/hooks/useMasterKey";
+import { useOrgMasterKey } from "@/hooks/useOrgMasterKey";
 
 export function VaultSwitcher() {
     const {
@@ -26,6 +28,8 @@ export function VaultSwitcher() {
     } = useOrganizationContext();
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
+    const { isUnlocked: isPersonalUnlocked } = useMasterKey();
+    const { unlockOrgVault } = useOrgMasterKey();
 
     const [open, setOpen] = useState(false);
     const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -40,6 +44,12 @@ export function VaultSwitcher() {
                 await switchToPersonal();
             } else {
                 await switchToOrg(orgId);
+                // Auto-unlock org vault if personal vault is unlocked
+                if (isPersonalUnlocked) {
+                    unlockOrgVault(orgId).catch((err) => {
+                        console.warn('[VaultSwitcher] Org vault auto-unlock failed:', err);
+                    });
+                }
             }
         } catch {
             toast.error("Failed to switch vault context");

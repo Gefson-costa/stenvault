@@ -22,6 +22,8 @@ import { useOrganizationMutations } from "../../hooks/organizations/useOrganizat
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useNavigate } from "react-router-dom";
+import { useMasterKey } from "@/hooks/useMasterKey";
+import { initializeOrgVault } from "@/lib/orgVaultSetup";
 
 interface CreateOrgModalProps {
     open: boolean;
@@ -36,6 +38,8 @@ export function CreateOrgModal({ open, onOpenChange, onSuccess }: CreateOrgModal
     const navigate = useNavigate();
 
     const { createOrg } = useOrganizationMutations();
+    const { getCachedKey, isUnlocked } = useMasterKey();
+    const orgKeysSetup = trpc.orgKeys.setup.useMutation();
 
     // Plan gate
     const { data: subscription } = trpc.stripe.getSubscription.useQuery(undefined, {
@@ -78,13 +82,34 @@ export function CreateOrgModal({ open, onOpenChange, onSuccess }: CreateOrgModal
             return;
         }
 
+        // Personal vault must be unlocked to wrap OMK
+        const personalMK = getCachedKey();
+        if (!personalMK) {
+            toast.error("Please unlock your vault before creating an organization");
+            return;
+        }
+
         try {
             const result = await createOrg.mutateAsync({
                 name: name.trim(),
                 slug: slug.trim() || undefined,
             });
 
-            toast.success("Organization created successfully!");
+            if (result) {
+                // Initialize org vault encryption (OMK + hybrid keypair)
+                try {
+                    await initializeOrgVault(
+                        result.id,
+                        personalMK,
+                        orgKeysSetup.mutateAsync,
+                    );
+                    toast.success("Organization created with encryption enabled");
+                } catch (vaultErr: any) {
+                    console.warn('[OrgSetup] Vault initialization failed:', vaultErr);
+                    toast.warning("Organization created, but encryption setup failed. You can retry from settings.");
+                }
+            }
+
             onOpenChange(false);
             setName("");
             setSlug("");
@@ -189,11 +214,16 @@ export function CreateOrgModal({ open, onOpenChange, onSuccess }: CreateOrgModal
                         >
                             Cancel
                         </Button>
-                        <Button type="submit" disabled={createOrg.isPending || !name.trim()}>
-                            {createOrg.isPending ? (
+                        <Button type="submit" disabled={createOrg.isPending || orgKeysSetup.isPending || !name.trim() || !isUnlocked}>
+                            {(createOrg.isPending || orgKeysSetup.isPending) ? (
                                 <>
                                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Creating...
+                                    {orgKeysSetup.isPending ? "Setting up encryption..." : "Creating..."}
+                                </>
+                            ) : !isUnlocked ? (
+                                <>
+                                    <Lock className="w-4 h-4 mr-2" />
+                                    Unlock vault first
                                 </>
                             ) : (
                                 "Create Organization"

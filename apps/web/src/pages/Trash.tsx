@@ -9,6 +9,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useIsMobile } from '@/hooks/useMobile';
 import { MobileTrash } from '@/components/mobile-v2/pages/MobileTrash';
 import { trpc } from '@/lib/trpc';
+import { useCurrentOrgId } from '@/contexts/OrganizationContext';
 import { toast } from 'sonner';
 import { formatBytes } from '@stenvault/shared';
 import {
@@ -73,13 +74,14 @@ export default function Trash() {
   const isMobile = useIsMobile();
   const { theme } = useTheme();
   const utils = trpc.useUtils();
+  const orgId = useCurrentOrgId();
 
   // State
   const [confirmEmpty, setConfirmEmpty] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   // Queries
-  const { data: deletedFiles, isLoading } = trpc.files.listDeleted.useQuery();
+  const { data: deletedFiles, isLoading } = trpc.files.listDeleted.useQuery({ organizationId: orgId });
 
   // Filename decryption
   const { getDisplayName, decryptFilenames } = useFilenameDecryption();
@@ -140,8 +142,8 @@ export default function Trash() {
   }, [deleteTarget, permanentDeleteMutation]);
 
   const handleEmptyTrash = useCallback(() => {
-    emptyTrashMutation.mutate();
-  }, [emptyTrashMutation]);
+    emptyTrashMutation.mutate({ organizationId: orgId });
+  }, [emptyTrashMutation, orgId]);
 
   if (isMobile) return <MobileTrash />;
 

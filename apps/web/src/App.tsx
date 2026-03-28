@@ -60,6 +60,9 @@ const MasterKeySetup = lazy(() => import("./pages/MasterKeySetup"));
 // Recovery Code Reset - lazy loaded (Phase 4.2 NEW_DAY recovery system)
 const RecoveryCodeReset = lazy(() => import("./pages/RecoveryCodeReset"));
 
+// Org invite acceptance - lazy loaded (AuthGuard, no DashboardLayout)
+const AcceptInvitePage = lazy(() => import("./pages/AcceptInvitePage"));
+
 // Loading fallback component
 function PageLoader() {
   return (
@@ -130,6 +133,9 @@ function Router() {
 
         {/* Master Key Setup - Phase 1.2 NEW_DAY Onboarding (AuthGuard but NO layout, NO MasterKeyGuard) */}
         <Route path="/master-key-setup" element={<RouteErrorBoundary routeName="Master Key Setup"><AuthGuard><MasterKeySetup /></AuthGuard></RouteErrorBoundary>} />
+
+        {/* Org invite acceptance (AuthGuard, no layout - simple standalone page) */}
+        <Route path="/invite/:code" element={<RouteErrorBoundary routeName="Accept Invite"><AuthGuard><AcceptInvitePage /></AuthGuard></RouteErrorBoundary>} />
 
         {/* P2P Receive Pages - Public with P2PErrorBoundary (need to receive files without login) */}
         <Route path="/p2p/offline/:sessionId" element={<P2PRoute component={OfflineReceivePage} />} />

@@ -28,6 +28,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { CreateOrgModal } from "@/components/organizations/CreateOrgModal";
 import { InviteMemberModal } from "@/components/organizations/InviteMemberModal";
 import { MembersList } from "@/components/organizations/MembersList";
+import { KeyDistributionPanel } from "@/components/organizations/KeyDistributionPanel";
 import { formatBytes } from "@stenvault/shared";
 import { cn } from "@/lib/utils";
 
@@ -256,6 +257,10 @@ function OrgDetailView({ org, userId, onBack, onInvite, inviteModalOpen, onInvit
                         organizationId={org.id}
                         currentUserRole={org.role}
                         currentUserId={userId}
+                    />
+                    <KeyDistributionPanel
+                        organizationId={org.id}
+                        currentUserRole={org.role}
                     />
                 </AuroraCardContent>
             </AuroraCard>
