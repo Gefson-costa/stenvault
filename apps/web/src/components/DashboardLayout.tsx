@@ -50,12 +50,13 @@ import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { VaultStatusIndicator } from "@/components/VaultStatusIndicator";
 import { VaultSwitcher } from "@/components/VaultSwitcher";
-import { useCurrentOrgId } from "@/contexts/OrganizationContext";
+import { useCurrentOrgId, useOrganizationContext } from "@/contexts/OrganizationContext";
 import { VaultUnlockModal } from "@/components/VaultUnlockModal";
 import { useMasterKey } from "@/hooks/useMasterKey";
 import { useAutoKeyDistribution } from "@/hooks/useAutoKeyDistribution";
 import { toast } from "sonner";
-import { AlertTriangle, CreditCard, Clock, Users } from "lucide-react";
+import { AlertTriangle, Building2, CreditCard, Clock, Users } from "lucide-react";
+import { useMyPendingOrgInvites, useOrganizationMutations } from "@/hooks/organizations/useOrganizations";
 import { formatBytes } from "@stenvault/shared";
 import { useBeforeUnloadWarning } from "@/stores/operationStore";
 import { prefetchRoute } from "@/lib/routePrefetch";
@@ -262,6 +263,59 @@ function RecoveryRequestBanner() {
         </button>
       </span>
       <button onClick={() => setDismissed(true)} className="text-amber-400 hover:text-amber-600 dark:hover:text-amber-200 shrink-0 p-0.5" aria-label="Dismiss">
+        &#x2715;
+      </button>
+    </div>
+  );
+}
+
+// Pending org invites banner — auto-detects invites addressed to the current user
+function PendingOrgInvitesBanner() {
+  const { user } = useAuth();
+  const { data: invites } = useMyPendingOrgInvites();
+  const { acceptInvite } = useOrganizationMutations();
+  const { refreshOrganizations } = useOrganizationContext();
+  const utils = trpc.useUtils();
+  const [dismissed, setDismissed] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+
+  if (dismissed || !user?.emailVerified) return null;
+
+  const pending = invites ?? [];
+  if (pending.length === 0) return null;
+
+  const first = pending[0]!;
+
+  const handleAccept = async () => {
+    setAccepting(true);
+    try {
+      await acceptInvite.mutateAsync({ inviteCode: first.inviteCode });
+      utils.organizations.getMyPendingInvites.invalidate();
+      refreshOrganizations();
+      toast.success(`Joined ${first.orgName}`);
+    } catch (err: any) {
+      const msg = err?.message || "Failed to accept invite";
+      if (msg.includes("already a member")) {
+        utils.organizations.getMyPendingInvites.invalidate();
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  return (
+    <div className="bg-indigo-50 dark:bg-indigo-950/30 border-b border-indigo-200 dark:border-indigo-800 px-4 py-2.5 flex items-center gap-2 text-sm text-indigo-700 dark:text-indigo-300">
+      <Building2 className="h-4 w-4 shrink-0" />
+      <span className="flex-1">
+        <strong>{first.orgName}</strong> invited you to join as <strong className="capitalize">{first.role}</strong>
+        {pending.length > 1 ? ` (+${pending.length - 1} more)` : ""}.{" "}
+        <button onClick={handleAccept} disabled={accepting} className="underline hover:no-underline font-medium">
+          {accepting ? "Joining..." : "Accept"}
+        </button>
+      </span>
+      <button onClick={() => setDismissed(true)} className="text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-200 shrink-0 p-0.5" aria-label="Dismiss">
         &#x2715;
       </button>
     </div>
@@ -630,6 +684,7 @@ function DesktopLayoutContent({
         <SubscriptionBanner />
         {/* Recovery Request Banner for Trusted Contacts */}
         <RecoveryRequestBanner />
+        <PendingOrgInvitesBanner />
 
         <main className="flex-1 p-4 min-h-0 overflow-auto relative">{children}</main>
       </SidebarInset>
@@ -690,6 +745,7 @@ export default function DashboardLayout({
           <EmailVerificationNotice user={user} />
           <SubscriptionBanner />
           <RecoveryRequestBanner />
+          <PendingOrgInvitesBanner />
           {children}
         </MobileShell>
         <BackgroundOperationsPanel />

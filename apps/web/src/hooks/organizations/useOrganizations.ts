@@ -63,6 +63,15 @@ export function useOrganizationStorageStats(organizationId: number | null) {
 }
 
 /**
+ * Hook for pending invites addressed to the current user
+ */
+export function useMyPendingOrgInvites() {
+    return trpc.organizations.getMyPendingInvites.useQuery(undefined, {
+        staleTime: 60_000,
+    });
+}
+
+/**
  * Hook for organization mutations
  */
 export function useOrganizationMutations() {
