@@ -123,7 +123,7 @@ async function verifyBeforeDecrypt(
             return false;
         }
     } catch (verifyError) {
-        // Infra error (WASM, parsing) — allow decrypt with warning
+        // Infra error (WASM, parsing) — block decrypt (fail closed)
         debugError('✍️', 'Signature verification infra error', verifyError);
         callbacks.setVerificationResult({
             valid: false,
@@ -132,10 +132,12 @@ async function verifyBeforeDecrypt(
             error: verifyError instanceof Error ? verifyError.message : 'Verification failed',
         });
         callbacks.setIsVerifying(false);
-        toast.warning('Could not verify signature', {
-            description: 'Proceeding with decryption — verification encountered an infrastructure error',
+        const msg = 'Signature verification encountered an infrastructure error. Decryption blocked for security.';
+        callbacks.setError(msg);
+        toast.error('Could not verify signature', {
+            description: 'Decryption blocked — please try again. If the problem persists, contact support.',
         });
-        return true; // Allow decrypt on infra errors
+        return false;
     }
 }
 

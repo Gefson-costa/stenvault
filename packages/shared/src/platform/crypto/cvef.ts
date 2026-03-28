@@ -439,6 +439,11 @@ function parseCVEFHeaderV1(data: Uint8Array): CVEFParsedHeader {
   // Normalize legacy formats
   metadata = normalizeCVEFMetadata(metadata);
 
+  // v1.4 requires container v2 — reject if found in container v1
+  if ('version' in metadata && metadata.version === '1.4') {
+    throw new Error('CVEF v1.4 metadata requires container v2, but container v1 was found');
+  }
+
   const headerBytes = data.slice(0, dataOffset);
 
   return {
@@ -514,6 +519,11 @@ function parseCVEFHeaderV2(data: Uint8Array): CVEFParsedHeader {
       throw new Error('Invalid CVEF signature metadata: not valid JSON');
     }
     signatureMetadata = validateSignatureMetadata(parsed);
+    if (!signatureMetadata) {
+      throw new Error(
+        'Invalid CVEF signature metadata: block present but missing required fields',
+      );
+    }
   }
 
   // Normalize (v1.4 should be returned as-is)
@@ -536,9 +546,23 @@ function parseCVEFHeaderV2(data: Uint8Array): CVEFParsedHeader {
  */
 export function normalizeCVEFMetadata(metadata: CVEFMetadata): CVEFMetadata {
   if ('version' in metadata) {
-    if (metadata.version === '1.4') return metadata as CVEFMetadataV1_4;
-    if (metadata.version === '1.3') return metadata as CVEFMetadataV1_3;
-    if (metadata.version === '1.2') return metadata as CVEFMetadataV1_2;
+    if (metadata.version === '1.4' || metadata.version === '1.2' || metadata.version === '1.3') {
+      // Validate required PQC fields for v1.2/v1.3/v1.4
+      const m = metadata as unknown as Record<string, unknown>;
+      if (m.pqcAlgorithm !== 'ml-kem-768') {
+        throw new Error(`CVEF v${metadata.version} metadata requires pqcAlgorithm 'ml-kem-768'`);
+      }
+      if (!m.pqcParams || typeof m.pqcParams !== 'object') {
+        throw new Error(`CVEF v${metadata.version} metadata missing required pqcParams`);
+      }
+      const pqc = m.pqcParams as Record<string, unknown>;
+      if (!('kemAlgorithm' in pqc)) {
+        throw new Error(`CVEF v${metadata.version} metadata missing required pqcParams.kemAlgorithm`);
+      }
+      if (metadata.version === '1.4') return metadata as CVEFMetadataV1_4;
+      if (metadata.version === '1.3') return metadata as CVEFMetadataV1_3;
+      return metadata as CVEFMetadataV1_2;
+    }
     if (metadata.version === '1.1') return metadata as CVEFMetadataV1_1;
   }
 
@@ -613,9 +637,10 @@ export function hasValidSignature(metadata: CVEFMetadata): boolean {
  * Returns the typed object if valid, undefined if required fields are missing.
  */
 export function validateSignatureMetadata(parsed: unknown): CVEFSignatureMetadata | undefined {
-  if (!parsed || typeof parsed !== 'object') return undefined;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
   const obj = parsed as Record<string, unknown>;
 
+  // Validate types
   if (
     typeof obj.signatureAlgorithm !== 'string' ||
     typeof obj.classicalSignature !== 'string' ||
@@ -625,6 +650,14 @@ export function validateSignatureMetadata(parsed: unknown): CVEFSignatureMetadat
     typeof obj.signerFingerprint !== 'string' ||
     typeof obj.signerKeyVersion !== 'number'
   ) {
+    return undefined;
+  }
+
+  // Validate algorithm value (only known algorithm accepted)
+  if (obj.signatureAlgorithm !== 'ed25519-ml-dsa-65') return undefined;
+
+  // Validate signing context value
+  if (obj.signingContext !== 'FILE' && obj.signingContext !== 'TIMESTAMP' && obj.signingContext !== 'SHARE') {
     return undefined;
   }
 

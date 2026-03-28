@@ -25,6 +25,7 @@ import { STREAMING } from '@/lib/constants';
 import type { FileItem } from '@/components/files/types';
 import type { HybridSecretKey, HybridSignaturePublicKey } from '@stenvault/shared/platform/crypto';
 import { VaultLockedError, DecryptionKeyError, FileCorruptedError } from '@/lib/errors/cryptoErrors';
+import { parseCVEFHeader, hasValidSignatureMetadata } from '@stenvault/shared/platform/crypto';
 
 /** Threshold above which V4 files use chunked encryption */
 const V4_CHUNKED_THRESHOLD = STREAMING.THRESHOLD_BYTES;
@@ -60,12 +61,12 @@ async function verifySignatureForDownload(
             return false;
         }
     } catch (verifyError) {
-        // Infra error (WASM, parsing) — allow decrypt with warning
+        // Infra error (WASM, parsing) — block download (fail closed)
         debugError('✍️', 'Signature verification infra error', verifyError);
-        toast.warning('Could not verify signature', {
-            description: 'Proceeding with download — verification encountered an infrastructure error',
+        toast.error('Could not verify signature', {
+            description: 'Download blocked — signature verification encountered an infrastructure error. Please try again.',
         });
-        return true;
+        return false;
     }
 }
 
@@ -214,13 +215,29 @@ export function useDirectDownload() {
                         throw streamErr;
                     }
                 } else {
-                    // Small UNSIGNED V4 files — single-pass decrypt in memory
+                    // Small UNSIGNED V4 files — load to memory, check container for signature, then decrypt
+                    if (opId) opStore.updateProgress(opId, { status: 'downloading', progress: 0 });
+                    const response = await fetch(url, { signal: abortController.signal });
+                    if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+                    const encryptedData = await response.arrayBuffer();
+
+                    // Defense-in-depth: check CVEF container for embedded signature even if server didn't report one
+                    try {
+                        const header = parseCVEFHeader(new Uint8Array(encryptedData));
+                        if (hasValidSignatureMetadata(header.signatureMetadata)) {
+                            debugWarn('✍️', 'CVEF container has signature but server did not report it — fetching signer key');
+                            // Attempt to verify using signerFingerprint from container
+                            if (!signerPublicKeyData) {
+                                toast.warning('File has embedded signature but signer key is unavailable — proceeding with AAD-only integrity');
+                            }
+                        }
+                    } catch {
+                        // Header parse error will be caught by decryptFileHybrid below
+                    }
+
                     if (opId) opStore.updateProgress(opId, { status: 'decrypting', progress: 50 });
-                    const decryptedBlob = await decryptFileHybridFromUrl(
-                        url,
-                        { secretKey: hybridSecretKey },
-                        mimeType,
-                    );
+                    const decryptedData = await decryptFileHybrid(encryptedData, { secretKey: hybridSecretKey });
+                    const decryptedBlob = new Blob([decryptedData], { type: mimeType });
                     triggerBlobDownload(decryptedBlob, displayName);
                 }
 

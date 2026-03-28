@@ -1041,7 +1041,7 @@ describe('AAD Tampering Detection', () => {
         tampered.set(data);
 
         // Flip a byte in the metadata JSON region (after 9-byte fixed header)
-        tampered[20] ^= 0xFF;
+        tampered[20]! ^= 0xFF;
 
         await expect(
             decryptFileHybrid(tampered.buffer as ArrayBuffer, {
@@ -1068,7 +1068,7 @@ describe('AAD Tampering Detection', () => {
         tampered.set(data);
 
         // Flip a byte in the encrypted data region
-        tampered[dataOffset + 10] ^= 0xFF;
+        tampered[dataOffset + 10]! ^= 0xFF;
 
         await expect(
             decryptFileHybrid(tampered.buffer as ArrayBuffer, {
