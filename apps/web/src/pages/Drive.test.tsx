@@ -4,44 +4,14 @@
  * Tests URL-synced query param behavior in isolation
  * (without mounting the full Drive component which is heavy).
  *
- * Validates the exact parsing logic used by Drive.tsx:
- * - view param → ViewMode
- * - q param → search query
- * - action param → triggers upload/new-folder
+ * Validates the exact parsing logic used by useDrive hook:
+ * - view param -> ViewMode
+ * - q param -> search query
+ * - action param -> triggers upload/new-folder
  */
 
 import { describe, it, expect } from 'vitest';
-
-/**
- * Extracted parsing logic from Drive.tsx lines 113-115:
- *   const params = new URLSearchParams(searchString);
- *   const viewMode = (params.get('view') as ViewMode) ?? getStoredViewMode();
- *   const searchQuery = params.get('q') ?? '';
- *
- * And action handling from lines 156-167:
- *   const action = params.get('action');
- */
-function parseDriveParams(searchString: string, storedViewMode = 'grid') {
-  const params = new URLSearchParams(searchString);
-  const viewMode = params.get('view') ?? storedViewMode;
-  const searchQuery = params.get('q') ?? '';
-  const action = params.get('action');
-  return { viewMode, searchQuery, action };
-}
-
-/**
- * Extracted URL mutation logic from Drive.tsx lines 117-128:
- *   setViewMode and setSearchQuery callbacks
- */
-function buildDriveUrl(searchString: string, updates: { view?: string; q?: string }) {
-  const p = new URLSearchParams(searchString);
-  if (updates.view !== undefined) p.set('view', updates.view);
-  if (updates.q !== undefined) {
-    if (updates.q) p.set('q', updates.q);
-    else p.delete('q');
-  }
-  return `/drive${p.toString() ? `?${p}` : ''}`;
-}
+import { parseDriveParams, buildDriveUrl } from '@/hooks/useDrive';
 
 describe('Drive query param parsing', () => {
   describe('View mode extraction', () => {
