@@ -1,6 +1,6 @@
 # StenVault Security Whitepaper
 
-**Version 2.0 — March 2026**
+**Version 2.1 — March 2026**
 **Classification: Public**
 
 ---
@@ -334,7 +334,45 @@ StenVault uses OPAQUE (Oblivious Pseudo-Random Function with Asymmetric Password
 
 The password never crosses the network in any form. Even an attacker who intercepts every packet cannot extract the password. Even if the server's database is fully compromised, the stored registration record cannot be used for an offline dictionary attack without the server's private OPRF key.
 
-### 6.3 Multi-Factor Authentication
+### 6.3 Magic Link (Passwordless Email OTP)
+
+StenVault offers a passwordless alternative to OPAQUE authentication via email-delivered one-time codes:
+
+1. The user enters their email address and requests a magic link
+2. The server generates a 6-digit OTP, stores its hash with a short TTL, and sends it to the user's verified email address
+3. The user enters the OTP in the client application
+4. The server verifies the OTP and issues session tokens identical to the OPAQUE post-auth pipeline
+
+Magic Link provides a password-free entry point for Layer 1 authentication. Layer 2 (vault unlock) still requires the user's password to derive the KEK and unwrap the Master Key. This method is useful when users access StenVault from a device where they cannot easily enter their password but have access to their email.
+
+### 6.4 Passkey Authentication (WebAuthn/FIDO2)
+
+StenVault supports passkey-based authentication using the Web Authentication API (WebAuthn, W3C Level 2) with FIDO2-compliant authenticators:
+
+**Registration** (from an authenticated session):
+
+1. The server generates registration options with the relying party identifier derived from the application origin
+2. The browser prompts the user to create a credential using their platform authenticator (biometrics, security key, or synced passkey)
+3. The server verifies the attestation and stores the credential public key, credential ID, and counter
+4. Multiple passkeys can be registered per account; each passkey has an independent credential
+
+**Authentication** (public, rate-limited):
+
+1. The server generates authentication options; if an email is provided, the response includes the user's registered credential IDs
+2. The browser prompts the user to authenticate with a matching passkey
+3. The server verifies the assertion against the stored public key and expected challenge
+4. On success, the same MFA gate and post-auth pipeline as OPAQUE are applied — if MFA is enabled, a challenge token is issued; otherwise, full session tokens are granted
+
+**Security properties:**
+
+- Challenges are stored in the server-side key-value store with a 5-minute TTL and consumed atomically (single-use) to prevent replay attacks
+- Anti-enumeration: when a non-existent email is provided, the server returns a plausible response with a synthetic credential entry, preventing account enumeration via response shape or timing differences
+- Account lockout integration: failed passkey assertions count toward the same lockout policy as password authentication
+- Passkey authentication is a Layer 1 alternative. Layer 2 vault unlock is unchanged — the user still enters their password to derive the KEK
+
+**Passkey scope:** Passkeys replace the password for server authentication only. They do not participate in key derivation, key wrapping, or any cryptographic operation related to file encryption. The Master Key derivation chain (password → Argon2id → KEK → Master Key) is unaffected.
+
+### 6.5 Multi-Factor Authentication
 
 StenVault supports two-factor authentication using Time-based One-Time Passwords (TOTP, RFC 6238):
 
@@ -343,7 +381,7 @@ StenVault supports two-factor authentication using Time-based One-Time Passwords
 - On login with MFA enabled, a short-lived challenge token is issued; full session tokens are granted only after TOTP verification
 - Anti-replay protection prevents reuse of a TOTP code within its validity window (per RFC 6238 Section 5.2)
 
-### 6.4 Session Management
+### 6.6 Session Management
 
 Sessions use a two-token architecture:
 
@@ -354,7 +392,7 @@ Sessions use a two-token architecture:
 
 If the token revocation store is unavailable, the system fails **closed** — tokens cannot be verified as non-revoked, so they are rejected. This prevents an infrastructure outage from creating a window where revoked tokens are accepted.
 
-### 6.5 Device Trust and Approval
+### 6.7 Device Trust and Approval
 
 New devices undergo an approval workflow before gaining fast-path vault unlock:
 
@@ -397,12 +435,19 @@ All files are encrypted using the V4 Hybrid PQC construction:
 
 ### 7.2 Chunked Encryption for Large Files
 
-Files above 100 MB are split into 64 KiB chunks for streaming encryption and decryption:
+Files above 100 MB are split into chunks for streaming encryption and decryption. Chunk sizes are tiered based on file size to balance memory usage and throughput:
+
+| File size | Chunk size |
+|-----------|-----------|
+| < 1 MB | 64 KiB |
+| < 100 MB | 256 KiB |
+| < 1 GB | 1 MiB |
+| >= 1 GB | 2 MiB |
 
 - Each chunk is encrypted independently with AES-256-GCM using the same file key
 - Each chunk uses a unique initialization vector derived deterministically from a base IV and the chunk index, preventing IV reuse
 - Each chunk's GCM authentication tag is verified before the decrypted plaintext is written to disk
-- Peak memory consumption during decryption is approximately 128 KB regardless of file size
+- Peak memory consumption during decryption remains bounded regardless of file size
 
 The client uses a tiered streaming approach to write decrypted data directly to disk:
 
@@ -428,7 +473,7 @@ Offset    Size         Field
 
 The metadata JSON contains:
 
-- Format version (`"1.2"` or `"1.3"`)
+- Format version (`"1.2"`, `"1.3"`, or `"1.4"`)
 - Algorithm identifiers (`"AES-256-GCM"`, `"argon2id"`, `"aes-kw"`, `"ml-kem-768"`)
 - KDF parameters (memory cost, time cost, parallelism)
 - Salt and initialization vector (Base64 encoded)
@@ -437,9 +482,10 @@ The metadata JSON contains:
   - PQ ciphertext (ML-KEM-768 encapsulation, 1,088 bytes)
   - Wrapped file key (AES-KW output, 40 bytes)
 - Chunking parameters (if applicable): chunk count, chunk size, per-chunk IVs
-- Signature parameters (v1.3): algorithm identifier, signer fingerprint, classical signature (Ed25519, 64 bytes), post-quantum signature (ML-DSA-65, 3,309 bytes)
+- Signature parameters (v1.3+): algorithm identifier, signer fingerprint, classical signature (Ed25519, 64 bytes), post-quantum signature (ML-DSA-65, 3,309 bytes)
+- AAD-protected metadata (v1.4): container v2 uses a two-block header where cryptographic metadata is bound to the ciphertext via AES-GCM additional authenticated data (AAD), preventing metadata tampering without detection
 
-Maximum metadata size is validated at 2 MB during parsing. Typical header overhead is approximately 1.8 KB for v1.2 and 6.2 KB for v1.3 with signatures.
+Maximum metadata size is validated at 2 MB during parsing. Typical header overhead is approximately 1.8 KB for v1.2, 6.2 KB for v1.3 with signatures, and similar for v1.4.
 
 ### 7.4 Filename Encryption
 
@@ -496,9 +542,10 @@ The server never possesses the encryption key at any point in this flow. Even if
 
 ### 9.1 Recovery Codes
 
-At encryption setup, 10 recovery codes are generated in `XXXX-XXXX` format:
+At encryption setup, 10 recovery codes are generated. Each code is 12 characters drawn from a reduced alphanumeric alphabet (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789` — 32 characters, excluding ambiguous glyphs I, O, 0, and 1):
 
-- Displayed to the user once and never stored in plaintext on the server
+- Generated client-side from the browser's CSPRNG and displayed to the user once
+- Never stored in plaintext on the server
 - Stored as HMAC-SHA256 digests using a deterministic salt combined with a server secret
 - Compared using constant-time comparison to prevent timing side-channel attacks
 - Used codes are removed from the stored set atomically
@@ -551,16 +598,20 @@ Cross-Site Request Forgery is prevented using the double-submit cookie pattern:
 
 ### 10.3 Content Security Policy
 
-The Content Security Policy restricts the client application to loading only same-origin resources:
+The Content Security Policy restricts the client application to a strict allowlist:
 
-- **Scripts**: Same-origin only, with `wasm-unsafe-eval` required for post-quantum WASM modules. No `unsafe-inline` or `unsafe-eval`.
-- **Connections**: Same-origin, HTTPS, and WSS only
+- **Scripts**: Same-origin only, with `wasm-unsafe-eval` required for post-quantum WASM modules. No `unsafe-inline` or `unsafe-eval` for scripts.
+- **Styles**: Same-origin with `unsafe-inline` (required for runtime style injection by the UI framework) and allowlisted external font providers (Google Fonts, Fontshare)
+- **Fonts**: Same-origin and allowlisted CDNs (Google Fonts, Fontshare, jsDelivr) for typeface loading
+- **Connections**: Same-origin, WSS for WebSocket, and the Cloudflare R2 storage domain for direct-to-storage file uploads and downloads
+- **Media**: Same-origin, blob URIs, and R2 storage domain for streaming playback of encrypted media
+- **Workers**: Same-origin and blob URIs (required for Web Workers handling post-quantum operations)
 - **Objects**: Blocked entirely (`object-src 'none'`)
 - **Frames**: Blocked entirely (`frame-ancestors 'none'`) to prevent clickjacking
 - **Form actions**: Same-origin only
 - **Insecure requests**: Automatically upgraded (`upgrade-insecure-requests`)
 
-No external scripts are loaded. All assets are bundled and served from the same origin.
+No external scripts are loaded. All application JavaScript is bundled and served from the same origin. External connections are limited to font providers (style only) and the object storage backend (encrypted data only).
 
 ### 10.4 Additional Security Headers
 
@@ -728,7 +779,7 @@ Security vulnerabilities should be reported to [security@stenvault.app](mailto:s
 | HKDF-SHA256 output | 32 bytes |
 | CVEF magic bytes | `0x43 0x56 0x45 0x46` ("CVEF") |
 | CVEF fixed header size | 9 bytes |
-| Streaming chunk size | 65,536 bytes (64 KiB) |
+| Streaming chunk size (base) | 65,536 bytes (64 KiB), tiered up to 2 MiB for large files |
 | Public Send chunk size | 5,242,880 bytes (5 MiB) |
 | Shamir field | GF(2^8) = 256 elements |
 | Key fingerprint | SHA-256, first 16 bytes, hex encoded (32 characters) |
@@ -756,6 +807,7 @@ Security vulnerabilities should be reported to [security@stenvault.app](mailto:s
 | **ML-DSA-65** | Module-Lattice Digital Signature Algorithm at NIST Security Level 3 (FIPS 204). Post-quantum. |
 | **ML-KEM-768** | Module-Lattice Key Encapsulation Mechanism at NIST Security Level 3 (FIPS 203). Post-quantum. |
 | **OPAQUE** | Oblivious Pseudo-Random Function with Asymmetric PAKE (RFC 9807). Zero-knowledge password authentication. |
+| **Passkey** | A FIDO2/WebAuthn credential stored by the platform authenticator (biometrics, security key, or synced via cloud). Used for passwordless Layer 1 authentication. |
 | **OPRF** | Oblivious Pseudo-Random Function. Core primitive of OPAQUE; allows PRF evaluation without revealing input. |
 | **PQC** | Post-Quantum Cryptography. Algorithms designed to resist attacks by quantum computers. |
 | **Shamir Secret Sharing** | Information-theoretically secure scheme that splits a secret into N shares, requiring K to reconstruct. |
@@ -791,6 +843,12 @@ Security vulnerabilities should be reported to [security@stenvault.app](mailto:s
 | FIPS 204 | Module-Lattice-Based Digital Signature Standard |
 | SP 800-38D | Recommendation for Block Cipher Modes of Operation: Galois/Counter Mode (GCM) and GMAC |
 
+### W3C Specifications
+
+| Specification | Title |
+|---------------|-------|
+| Web Authentication Level 2 | Web Authentication: An API for accessing Public Key Credentials (WebAuthn) |
+
 ### Other References
 
 | Reference | Relevance |
@@ -806,6 +864,7 @@ Security vulnerabilities should be reported to [security@stenvault.app](mailto:s
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.1 | March 2026 | Added Magic Link and Passkey (WebAuthn) authentication sections. Corrected recovery code format (12-char alphanumeric, not XXXX-XXXX). Added CVEF v1.4 (AAD-protected metadata). Clarified tiered streaming chunk sizes. Updated CSP documentation to reflect actual production policy (external font providers, R2 storage domain). |
 | 2.0 | March 2026 | Complete rewrite. Restructured for auditor audience. Removed implementation details and source references. Added supply chain security, algorithm agility, and explicit limitations sections. |
 | 1.0 | March 2026 | Initial release. |
 
