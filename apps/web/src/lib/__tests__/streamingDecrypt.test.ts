@@ -307,6 +307,79 @@ describe('decryptV4ChunkedToStream', () => {
   });
 });
 
+// ============ Streaming Decrypt with Signed v1.4 (container v2) ============
+
+describe('decryptV4ChunkedToStream with signed v1.4 header', () => {
+  it('roundtrip: signed streaming encrypt → streaming decrypt → matches original', async () => {
+    const { getHybridSignatureProvider } = await import('@/lib/platform/webHybridSignatureProvider');
+    const signatureProvider = getHybridSignatureProvider();
+    const sigKeyPair = await signatureProvider.generateKeyPair();
+
+    const plaintext = new Uint8Array(150 * 1024); // 150KB → ~3 chunks
+    fillRandom(plaintext);
+    const file = createTestFile(plaintext);
+
+    const { blob, signatureMetadata } = await encryptFileHybridStreaming(file, {
+      publicKey: testPublicKey,
+      signing: {
+        secretKey: sigKeyPair.secretKey,
+        fingerprint: 'stream-sig-fp',
+        keyVersion: 1,
+      },
+    });
+
+    // Verify signature metadata was produced
+    expect(signatureMetadata).toBeDefined();
+    expect(signatureMetadata!.signerFingerprint).toBe('stream-sig-fp');
+
+    // Verify container v2 header
+    const data = new Uint8Array(await blob.arrayBuffer());
+    expect(data[4]).toBe(2); // container v2
+
+    const parsed = parseCVEFHeader(data);
+    expect(isCVEFMetadataV1_4(parsed.metadata)).toBe(true);
+    expect(parsed.signatureMetadata).toBeDefined();
+
+    // Extract key and stream-decrypt
+    const { fileKey, hmacKey } = await extractFileKey(blob);
+    const encryptedStream = blobToStream(blob);
+    const plaintextStream = decryptV4ChunkedToStream(encryptedStream, { fileKey, hmacKey });
+    const decrypted = await collectStream(plaintextStream);
+
+    expect(decrypted.byteLength).toBe(plaintext.byteLength);
+    expect(Array.from(decrypted)).toEqual(Array.from(plaintext));
+  });
+
+  it('non-chunked signed v1.4: stream-decrypt roundtrip', async () => {
+    const { getHybridSignatureProvider } = await import('@/lib/platform/webHybridSignatureProvider');
+    const signatureProvider = getHybridSignatureProvider();
+    const sigKeyPair = await signatureProvider.generateKeyPair();
+
+    const plaintext = new Uint8Array(1024); // 1KB → non-chunked
+    fillRandom(plaintext);
+    const file = createTestFile(plaintext);
+
+    const { blob, signatureMetadata } = await encryptFileHybrid(file, {
+      publicKey: testPublicKey,
+      signing: {
+        secretKey: sigKeyPair.secretKey,
+        fingerprint: 'small-sig-fp',
+        keyVersion: 2,
+      },
+    });
+
+    expect(signatureMetadata).toBeDefined();
+
+    const { fileKey } = await extractFileKey(blob);
+    const encryptedStream = blobToStream(blob);
+    const plaintextStream = decryptV4ChunkedToStream(encryptedStream, { fileKey });
+    const decrypted = await collectStream(plaintextStream);
+
+    expect(decrypted.byteLength).toBe(plaintext.byteLength);
+    expect(Array.from(decrypted)).toEqual(Array.from(plaintext));
+  });
+});
+
 // ============ Streaming Encrypt Blob Output Tests ============
 
 describe('encryptFileHybridStreaming (streaming Blob output)', () => {

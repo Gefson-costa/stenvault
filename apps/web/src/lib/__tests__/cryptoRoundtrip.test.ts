@@ -1094,4 +1094,106 @@ describe('AAD Tampering Detection', () => {
 
         expect(new Uint8Array(decrypted)).toEqual(plaintext);
     });
+
+    it('flipping a byte in the signature block causes decrypt to fail', async () => {
+        if (!available) return;
+        const keyPair = await hybridKem.generateKeyPair();
+        const sigKeyPair = await getHybridSignatureProvider().generateKeyPair();
+
+        const plaintext = new TextEncoder().encode('Sig block tamper test');
+        const file = createMockFile(plaintext, 'sig-tamper.txt');
+
+        const { blob } = await encryptFileHybrid(file, {
+            publicKey: keyPair.publicKey,
+            signing: {
+                secretKey: sigKeyPair.secretKey,
+                fingerprint: 'tamper-fp',
+                keyVersion: 1,
+            },
+        });
+
+        const data = new Uint8Array(await blob.arrayBuffer());
+        const { dataOffset } = parseCVEFHeader(data);
+
+        // The signature block sits between core metadata and encrypted data.
+        // Flip a byte near the end of the header (inside the signature block).
+        const tampered = new Uint8Array(data.length);
+        tampered.set(data);
+        // Flip a byte 20 bytes before dataOffset (inside sig block)
+        const tamperOffset = dataOffset - 20;
+        tampered[tamperOffset]! ^= 0xFF;
+
+        // AAD mismatch: headerBytes at decrypt time differ from encrypt time
+        await expect(
+            decryptFileHybrid(tampered.buffer as ArrayBuffer, {
+                secretKey: keyPair.secretKey,
+            }),
+        ).rejects.toThrow();
+    });
+
+    it('signed v1.4 decrypts without signerPublicKey (AAD still protects integrity)', async () => {
+        if (!available) return;
+        const keyPair = await hybridKem.generateKeyPair();
+        const sigKeyPair = await getHybridSignatureProvider().generateKeyPair();
+
+        const plaintext = new TextEncoder().encode('No signer key test');
+        const file = createMockFile(plaintext, 'no-signer.txt');
+
+        const { blob } = await encryptFileHybrid(file, {
+            publicKey: keyPair.publicKey,
+            signing: {
+                secretKey: sigKeyPair.secretKey,
+                fingerprint: 'nosigner-fp',
+                keyVersion: 1,
+            },
+        });
+
+        // Decrypt without signerPublicKey — should succeed (AAD integrity holds)
+        const decrypted = await decryptFileHybrid(await blob.arrayBuffer(), {
+            secretKey: keyPair.secretKey,
+            // no signerPublicKey
+        });
+
+        expect(new Uint8Array(decrypted)).toEqual(plaintext);
+    });
+});
+
+// ============================================================
+// 10. Chunked Manifest Header Hash Verification (v1.4)
+// ============================================================
+
+describe('Chunked Manifest Header Hash Verification', () => {
+    let hybridKem: ReturnType<typeof getHybridKemProvider>;
+    let available: boolean;
+
+    beforeAll(async () => {
+        hybridKem = getHybridKemProvider();
+        available = await hybridKem.isAvailable();
+    });
+
+    it('manifest rejects when header bytes are tampered in chunked v1.4', async () => {
+        if (!available) return;
+        const keyPair = await hybridKem.generateKeyPair();
+
+        const plaintext = randomBytes(200 * 1024); // 4 chunks
+        const file = createMockFile(plaintext, 'manifest-header-tamper.bin');
+
+        const { blob } = await encryptFileHybridStreaming(file, {
+            publicKey: keyPair.publicKey,
+        });
+
+        const data = new Uint8Array(await blob.arrayBuffer());
+
+        // Tamper a byte in the core metadata JSON region (byte 15, inside header)
+        // This changes the AAD seen at decrypt → each chunk's AES-GCM should fail
+        const tampered = new Uint8Array(data.length);
+        tampered.set(data);
+        tampered[15]! ^= 0x01;
+
+        await expect(
+            decryptFileHybrid(tampered.buffer as ArrayBuffer, {
+                secretKey: keyPair.secretKey,
+            }),
+        ).rejects.toThrow();
+    });
 });

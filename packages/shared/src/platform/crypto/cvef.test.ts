@@ -405,6 +405,111 @@ describe('describeCVEFMetadata', () => {
   });
 });
 
+// ============ normalizeCVEFMetadata PQC Validation ============
+
+describe('normalizeCVEFMetadata PQC validation', () => {
+  it('should throw for v1.2 metadata without pqcAlgorithm ml-kem-768', () => {
+    const metadata = {
+      version: '1.2',
+      salt: 'x', iv: 'x', algorithm: 'AES-256-GCM', iterations: 0,
+      pqcAlgorithm: 'none',
+      pqcParams: { kemAlgorithm: 'x25519-ml-kem-768', classicalCiphertext: 'x', pqCiphertext: 'x', wrappedFileKey: 'x' },
+    };
+    expect(() => normalizeCVEFMetadata(metadata as any)).toThrow("requires pqcAlgorithm 'ml-kem-768'");
+  });
+
+  it('should throw for v1.4 metadata without pqcParams', () => {
+    const metadata = {
+      version: '1.4',
+      salt: 'x', iv: 'x', algorithm: 'AES-256-GCM', iterations: 0,
+      pqcAlgorithm: 'ml-kem-768',
+    };
+    expect(() => normalizeCVEFMetadata(metadata as any)).toThrow('missing required pqcParams');
+  });
+
+  it('should throw for v1.3 metadata without kemAlgorithm in pqcParams', () => {
+    const metadata = {
+      version: '1.3',
+      salt: 'x', iv: 'x', algorithm: 'AES-256-GCM', iterations: 0,
+      pqcAlgorithm: 'ml-kem-768',
+      pqcParams: { classicalCiphertext: 'x', pqCiphertext: 'x', wrappedFileKey: 'x' },
+    };
+    expect(() => normalizeCVEFMetadata(metadata as any)).toThrow('missing required pqcParams.kemAlgorithm');
+  });
+});
+
+// ============ validateSignatureMetadata edge cases ============
+
+describe('validateSignatureMetadata edge cases', () => {
+  it('should reject unknown signatureAlgorithm', () => {
+    expect(validateSignatureMetadata({
+      signatureAlgorithm: 'rsa-4096',
+      classicalSignature: 'abc',
+      pqSignature: 'def',
+      signingContext: 'FILE',
+      signedAt: 12345,
+      signerFingerprint: 'fp1',
+      signerKeyVersion: 1,
+    })).toBeUndefined();
+  });
+
+  it('should reject unknown signingContext', () => {
+    expect(validateSignatureMetadata({
+      signatureAlgorithm: 'ed25519-ml-dsa-65',
+      classicalSignature: 'abc',
+      pqSignature: 'def',
+      signingContext: 'UNKNOWN_CONTEXT',
+      signedAt: 12345,
+      signerFingerprint: 'fp1',
+      signerKeyVersion: 1,
+    })).toBeUndefined();
+  });
+
+  it('should reject array input', () => {
+    expect(validateSignatureMetadata([1, 2, 3])).toBeUndefined();
+  });
+
+  it('should reject when signerKeyVersion is not a number', () => {
+    expect(validateSignatureMetadata({
+      signatureAlgorithm: 'ed25519-ml-dsa-65',
+      classicalSignature: 'abc',
+      pqSignature: 'def',
+      signingContext: 'FILE',
+      signedAt: 12345,
+      signerFingerprint: 'fp1',
+      signerKeyVersion: '1', // string, not number
+    })).toBeUndefined();
+  });
+
+  it('should accept TIMESTAMP context', () => {
+    const result = validateSignatureMetadata({
+      signatureAlgorithm: 'ed25519-ml-dsa-65',
+      classicalSignature: 'abc',
+      pqSignature: 'def',
+      signingContext: 'TIMESTAMP',
+      signedAt: 12345,
+      signerFingerprint: 'fp1',
+      signerKeyVersion: 1,
+    });
+    expect(result).toBeDefined();
+    expect(result!.signingContext).toBe('TIMESTAMP');
+  });
+
+  it('should accept SHARE context', () => {
+    const result = validateSignatureMetadata({
+      signatureAlgorithm: 'ed25519-ml-dsa-65',
+      classicalSignature: 'abc',
+      pqSignature: 'def',
+      signingContext: 'SHARE',
+      signedAt: 12345,
+      signerFingerprint: 'fp1',
+      signerKeyVersion: 1,
+    });
+    expect(result).toBeDefined();
+    expect(result!.signingContext).toBe('SHARE');
+  });
+});
+
 // ============ v1.4 Container v2 Tests ============
 
 describe('CVEF v1.4 (container v2)', () => {
@@ -570,6 +675,72 @@ describe('CVEF v1.4 (container v2)', () => {
     const metadataLen = new TextEncoder().encode(metadataJson).length;
     const truncated = header.slice(0, CVEF_HEADER_SIZE + metadataLen + 2); // only 2 of 4 sigLen bytes
     expect(() => parseCVEFHeader(truncated)).toThrow('missing signature length field');
+  });
+
+  it('should reject v1.4 metadata smuggled inside container v1', () => {
+    // Manually craft a container v1 header with v1.4 metadata JSON
+    const v14Json = JSON.stringify(v14Metadata);
+    const metadataBytes = new TextEncoder().encode(v14Json);
+    const header = new Uint8Array(CVEF_HEADER_SIZE + metadataBytes.length);
+    header.set([0x43, 0x56, 0x45, 0x46], 0); // magic
+    header[4] = CVEF_CONTAINER_V1; // container v1!
+    header[5] = (metadataBytes.length >> 24) & 0xff;
+    header[6] = (metadataBytes.length >> 16) & 0xff;
+    header[7] = (metadataBytes.length >> 8) & 0xff;
+    header[8] = metadataBytes.length & 0xff;
+    header.set(metadataBytes, CVEF_HEADER_SIZE);
+
+    expect(() => parseCVEFHeader(header)).toThrow('v1.4 metadata requires container v2');
+  });
+
+  it('should reject invalid signature JSON in container v2', () => {
+    // Build v2 header with valid core metadata but garbage signature block
+    const coreJson = JSON.stringify(v14Metadata);
+    const coreBytes = new TextEncoder().encode(coreJson);
+    const garbageSig = new TextEncoder().encode('{invalid json!!!');
+
+    const totalSize = CVEF_HEADER_SIZE + coreBytes.length + 4 + garbageSig.length;
+    const header = new Uint8Array(totalSize);
+    header.set([0x43, 0x56, 0x45, 0x46], 0);
+    header[4] = CVEF_CONTAINER_V2;
+    header[5] = (coreBytes.length >> 24) & 0xff;
+    header[6] = (coreBytes.length >> 16) & 0xff;
+    header[7] = (coreBytes.length >> 8) & 0xff;
+    header[8] = coreBytes.length & 0xff;
+    header.set(coreBytes, CVEF_HEADER_SIZE);
+    const sigLenOffset = CVEF_HEADER_SIZE + coreBytes.length;
+    header[sigLenOffset] = (garbageSig.length >> 24) & 0xff;
+    header[sigLenOffset + 1] = (garbageSig.length >> 16) & 0xff;
+    header[sigLenOffset + 2] = (garbageSig.length >> 8) & 0xff;
+    header[sigLenOffset + 3] = garbageSig.length & 0xff;
+    header.set(garbageSig, sigLenOffset + 4);
+
+    expect(() => parseCVEFHeader(header)).toThrow('not valid JSON');
+  });
+
+  it('should reject structurally invalid signature metadata in container v2', () => {
+    // Build v2 header with valid JSON but missing required signature fields
+    const coreJson = JSON.stringify(v14Metadata);
+    const coreBytes = new TextEncoder().encode(coreJson);
+    const incompleteSig = new TextEncoder().encode(JSON.stringify({ signatureAlgorithm: 'ed25519-ml-dsa-65' }));
+
+    const totalSize = CVEF_HEADER_SIZE + coreBytes.length + 4 + incompleteSig.length;
+    const header = new Uint8Array(totalSize);
+    header.set([0x43, 0x56, 0x45, 0x46], 0);
+    header[4] = CVEF_CONTAINER_V2;
+    header[5] = (coreBytes.length >> 24) & 0xff;
+    header[6] = (coreBytes.length >> 16) & 0xff;
+    header[7] = (coreBytes.length >> 8) & 0xff;
+    header[8] = coreBytes.length & 0xff;
+    header.set(coreBytes, CVEF_HEADER_SIZE);
+    const sigLenOffset = CVEF_HEADER_SIZE + coreBytes.length;
+    header[sigLenOffset] = (incompleteSig.length >> 24) & 0xff;
+    header[sigLenOffset + 1] = (incompleteSig.length >> 16) & 0xff;
+    header[sigLenOffset + 2] = (incompleteSig.length >> 8) & 0xff;
+    header[sigLenOffset + 3] = incompleteSig.length & 0xff;
+    header.set(incompleteSig, sigLenOffset + 4);
+
+    expect(() => parseCVEFHeader(header)).toThrow('missing required fields');
   });
 
   it('v1.4 with chunked info round-trips', () => {
