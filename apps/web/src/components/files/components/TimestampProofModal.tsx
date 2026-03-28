@@ -57,13 +57,14 @@ export function TimestampProofModal({
         timestampInfo,
         isLoading,
         isEnabled,
+        hasPlanAccess,
         submitTimestamp,
         verifyTimestamp,
         downloadProof,
         downloadLegalPdf,
         retryTimestamp,
         isPending,
-    } = useTimestamp({ fileId });
+    } = useTimestamp({ fileId, filename });
 
     const [verification, setVerification] = useState<TimestampVerification | null>(null);
     const [isVerifying, setIsVerifying] = useState(false);
@@ -165,6 +166,7 @@ export function TimestampProofModal({
                         <NoTimestampState
                             onSubmit={submitTimestamp}
                             isPending={isPending}
+                            hasPlanAccess={hasPlanAccess}
                         />
                     ) : (
                         <motion.div
@@ -277,9 +279,11 @@ function LoadingState() {
 function NoTimestampState({
     onSubmit,
     isPending,
+    hasPlanAccess,
 }: {
     onSubmit: () => void;
     isPending: boolean;
+    hasPlanAccess: boolean;
 }) {
     return (
         <motion.div
@@ -316,26 +320,50 @@ function NoTimestampState({
                 </p>
             </div>
 
-            <Button
-                onClick={onSubmit}
-                disabled={isPending}
-                className={cn(
-                    "bg-gradient-to-r text-white font-semibold px-6",
-                    bitcoinGradient,
-                    "hover:opacity-90 transition-opacity"
-                )}
-            >
-                {isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                    <Sparkles className="h-4 w-4 mr-2" />
-                )}
-                Create Timestamp
-            </Button>
+            {hasPlanAccess ? (
+                <>
+                    <Button
+                        onClick={onSubmit}
+                        disabled={isPending}
+                        className={cn(
+                            "bg-gradient-to-r text-white font-semibold px-6",
+                            bitcoinGradient,
+                            "hover:opacity-90 transition-opacity"
+                        )}
+                    >
+                        {isPending ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                            <Sparkles className="h-4 w-4 mr-2" />
+                        )}
+                        Create Timestamp
+                    </Button>
 
-            <p className="text-xs text-zinc-600">
-                Free • Takes 1-3 hours for Bitcoin confirmation
-            </p>
+                    <p className="text-xs text-zinc-600">
+                        Included with your plan • Takes 1-3 hours for Bitcoin confirmation
+                    </p>
+                </>
+            ) : (
+                <>
+                    <div className="px-4 py-2 rounded-lg bg-zinc-800/50 border border-zinc-700/50">
+                        <p className="text-sm text-zinc-400">
+                            Blockchain timestamping requires a <span className="text-orange-400 font-medium">Pro</span> or <span className="text-orange-400 font-medium">Business</span> plan.
+                        </p>
+                    </div>
+
+                    <Button
+                        onClick={() => window.location.href = '/settings?tab=subscription'}
+                        className={cn(
+                            "bg-gradient-to-r text-white font-semibold px-6",
+                            bitcoinGradient,
+                            "hover:opacity-90 transition-opacity"
+                        )}
+                    >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Upgrade to Pro
+                    </Button>
+                </>
+            )}
         </motion.div>
     );
 }

@@ -19,6 +19,8 @@ import type {
 interface UseTimestampOptions {
     /** File ID to manage timestamps for */
     fileId?: number;
+    /** Decrypted filename (for zero-knowledge download naming) */
+    filename?: string;
     /** Callback when timestamp status changes */
     onStatusChange?: (status: TimestampStatus | null) => void;
 }
@@ -30,6 +32,8 @@ interface UseTimestampReturn {
     isLoading: boolean;
     /** Whether timestamping service is enabled */
     isEnabled: boolean;
+    /** Whether user's plan includes timestamp access */
+    hasPlanAccess: boolean;
     /** Submit file for timestamping */
     submitTimestamp: () => Promise<void>;
     /** Verify the timestamp proof */
@@ -48,7 +52,7 @@ interface UseTimestampReturn {
  * Hook for managing OpenTimestamps blockchain proofs
  */
 export function useTimestamp(options: UseTimestampOptions = {}): UseTimestampReturn {
-    const { fileId, onStatusChange } = options;
+    const { fileId, filename, onStatusChange } = options;
     const utils = trpc.useUtils();
 
     // Check if OTS is enabled
@@ -56,6 +60,7 @@ export function useTimestamp(options: UseTimestampOptions = {}): UseTimestampRet
         staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     });
     const isEnabled = enabledData?.enabled ?? false;
+    const hasPlanAccess = enabledData?.hasPlanAccess ?? false;
 
     // Get timestamp status for the file
     const {
@@ -148,7 +153,7 @@ export function useTimestamp(options: UseTimestampOptions = {}): UseTimestampRet
             return;
         }
         try {
-            const result = await utils.timestamp.downloadProof.fetch({ fileId });
+            const result = await utils.timestamp.downloadProof.fetch({ fileId, displayName: filename });
 
             // Use platform-agnostic download provider
             const downloadResult = await downloadBase64File(
@@ -166,7 +171,7 @@ export function useTimestamp(options: UseTimestampOptions = {}): UseTimestampRet
             const message = error instanceof Error ? error.message : "Failed to download proof";
             toast.error(message);
         }
-    }, [fileId, utils]);
+    }, [fileId, filename, utils]);
 
     // Download legal PDF
     const downloadLegalPdf = useCallback(async () => {
@@ -175,7 +180,7 @@ export function useTimestamp(options: UseTimestampOptions = {}): UseTimestampRet
             return;
         }
         try {
-            const result = await legalPdfMutation.mutateAsync({ fileId });
+            const result = await legalPdfMutation.mutateAsync({ fileId, displayName: filename });
 
             // Use platform-agnostic download provider
             const downloadResult = await downloadBase64File(
@@ -192,7 +197,7 @@ export function useTimestamp(options: UseTimestampOptions = {}): UseTimestampRet
         } catch {
             // Error already handled by mutation onError
         }
-    }, [fileId, legalPdfMutation]);
+    }, [fileId, filename, legalPdfMutation]);
 
     // Retry timestamp
     const retryTimestamp = useCallback(async () => {
@@ -219,6 +224,7 @@ export function useTimestamp(options: UseTimestampOptions = {}): UseTimestampRet
         timestampInfo,
         isLoading,
         isEnabled,
+        hasPlanAccess,
         submitTimestamp,
         verifyTimestamp,
         downloadProof,
