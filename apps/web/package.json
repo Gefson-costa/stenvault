@@ -33,6 +33,7 @@
         "@radix-ui/react-toggle": "^1.1.10",
         "@radix-ui/react-tooltip": "^1.2.8",
         "@serenity-kit/opaque": "1.1.0",
+        "@simplewebauthn/browser": "13.3.0",
         "@stenvault/api-types": "workspace:*",
         "@stenvault/pqc-wasm": "0.1.2",
         "@stenvault/shared": "workspace:*",

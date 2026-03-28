@@ -95,7 +95,21 @@ vi.mock('@/lib/trpc', () => ({
         })),
       },
     },
+    passkeys: {
+      generateAuthOptions: {
+        useMutation: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+      },
+      verifyAuthentication: {
+        useMutation: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+      },
+    },
   },
+}));
+
+// Mock @simplewebauthn/browser
+vi.mock('@simplewebauthn/browser', () => ({
+  browserSupportsWebAuthn: vi.fn(() => true),
+  startAuthentication: vi.fn(),
 }));
 
 // Mock auth components

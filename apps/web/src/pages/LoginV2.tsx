@@ -4,8 +4,9 @@ import { startLogin, finishLogin } from '@/lib/opaqueClient';
 import { scheduleProactiveRefresh } from '@/lib/auth';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ArrowLeft, ShieldCheck, Fingerprint } from 'lucide-react';
 import { AuthLayout, AuthCard, AuthInput, AuthButton, AuthDivider, AuthLink } from '@/components/auth';
+import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser';
 
 // Polling interval for checking if login was completed elsewhere (ms)
 const AUTH_POLL_INTERVAL_MS = 3000;
@@ -31,12 +32,16 @@ export default function LoginV2() {
     const [mfaToken, setMfaToken] = useState<string | null>(null);
     const [mfaCode, setMfaCode] = useState('');
 
+    const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
+
     const utils = trpc.useUtils();
     const opaqueLoginStartMutation = trpc.auth.opaqueLoginStart.useMutation();
     const opaqueLoginFinishMutation = trpc.auth.opaqueLoginFinish.useMutation();
     const verifyMFAMutation = trpc.auth.verifyMFA.useMutation();
     const sendMagicLinkMutation = trpc.auth.sendMagicLink.useMutation();
     const verifyOtpMutation = trpc.auth.verifyOTP.useMutation();
+    const generateAuthOptionsMutation = trpc.passkeys.generateAuthOptions.useMutation();
+    const verifyAuthenticationMutation = trpc.passkeys.verifyAuthentication.useMutation();
 
     // Check if user is already authenticated (for cross-device login)
     const { data: currentUser } = trpc.auth.me.useQuery(undefined, {
@@ -146,6 +151,43 @@ export default function LoginV2() {
         setMfaToken(null);
         setMfaCode('');
         setOtp('');
+    };
+
+    const handlePasskeyLogin = async () => {
+        try {
+            setIsPasskeyLoading(true);
+
+            // Generate authentication options (email optional — helps with allowCredentials)
+            const trimmedEmail = email.trim().toLowerCase() || undefined;
+            const { options, challengeId } = await generateAuthOptionsMutation.mutateAsync({
+                email: trimmedEmail,
+            });
+
+            // Prompt browser passkey UI
+            const credential = await startAuthentication({ optionsJSON: options });
+
+            // Verify with server
+            const result = await verifyAuthenticationMutation.mutateAsync({
+                challengeId,
+                credential: credential as any,
+            }) as any;
+
+            // Handle MFA gate (same as OPAQUE)
+            if (result?.mfaRequired) {
+                setMfaToken(result.mfaToken);
+                setMfaCode('');
+                return;
+            }
+
+            await completeLogin(result);
+        } catch (error: any) {
+            // User cancelled the passkey prompt — don't show error
+            if (error?.name === 'NotAllowedError') return;
+            const message = error?.message || 'Passkey authentication failed';
+            toast.error(message);
+        } finally {
+            setIsPasskeyLoading(false);
+        }
     };
 
     const isPending = isLoggingIn || opaqueLoginStartMutation.isPending || opaqueLoginFinishMutation.isPending;
@@ -325,6 +367,17 @@ export default function LoginV2() {
                 <AuthDivider text="Preference" />
 
                 <div className="space-y-4">
+                    {browserSupportsWebAuthn() && (
+                        <AuthButton
+                            variant="secondary"
+                            onClick={handlePasskeyLogin}
+                            isLoading={isPasskeyLoading}
+                            icon={<Fingerprint className="w-4 h-4" />}
+                        >
+                            Sign in with Passkey
+                        </AuthButton>
+                    )}
+
                     <AuthButton
                         variant="secondary"
                         onClick={() => setAuthMethod(authMethod === 'password' ? 'magic' : 'password')}

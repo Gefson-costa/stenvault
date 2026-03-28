@@ -19,7 +19,9 @@ import {
     Lock,
     Trash2,
     Download,
+    Fingerprint,
 } from "lucide-react";
+import { browserSupportsWebAuthn, startRegistration as startPasskeyRegistration } from "@simplewebauthn/browser";
 import { clearMasterKeyCache, clearDeviceWrappedMK } from "@/hooks/useMasterKey";
 import { ShamirRecoverySection } from "./ShamirRecoverySection";
 import { TrustedContactsSection } from "./TrustedContactsSection";
@@ -115,6 +117,18 @@ export function SecuritySettings() {
         onError: (error) => toast.error(error.message),
     });
 
+    // Passkey State
+    const [passkeyRegisterOpen, setPasskeyRegisterOpen] = useState(false);
+    const [passkeyDeleteOpen, setPasskeyDeleteOpen] = useState<number | null>(null);
+    const [passkeyFriendlyName, setPasskeyFriendlyName] = useState("");
+    const [isRegisteringPasskey, setIsRegisteringPasskey] = useState(false);
+
+    // Passkey Queries & Mutations
+    const { data: passkeys, refetch: refetchPasskeys } = trpc.passkeys.list.useQuery();
+    const generateRegOptionsMutation = trpc.passkeys.generateRegistrationOptions.useMutation();
+    const verifyRegMutation = trpc.passkeys.verifyRegistration.useMutation();
+    const deletePasskeyMutation = trpc.passkeys.delete.useMutation();
+
     // OPAQUE Password Change Mutations
     const opaqueChangeStartMutation = trpc.auth.opaqueChangePasswordStart.useMutation();
     const opaqueChangeFinishMutation = trpc.auth.opaqueChangePasswordFinish.useMutation();
@@ -159,6 +173,39 @@ export function SecuritySettings() {
         setQrCodeUrl("");
         setVerificationCode("");
         setBackupCodes([]);
+    };
+
+    const handleRegisterPasskey = async () => {
+        try {
+            setIsRegisteringPasskey(true);
+            const { options, challengeId } = await generateRegOptionsMutation.mutateAsync({
+                friendlyName: passkeyFriendlyName || undefined,
+            });
+
+            const credential = await startPasskeyRegistration({ optionsJSON: options });
+
+            await verifyRegMutation.mutateAsync({ challengeId, credential: credential as any });
+            toast.success("Passkey registered!");
+            setPasskeyRegisterOpen(false);
+            setPasskeyFriendlyName("");
+            refetchPasskeys();
+        } catch (error: any) {
+            if (error?.name === "NotAllowedError") return;
+            toast.error(error?.message || "Failed to register passkey");
+        } finally {
+            setIsRegisteringPasskey(false);
+        }
+    };
+
+    const handleDeletePasskey = async (id: number) => {
+        try {
+            await deletePasskeyMutation.mutateAsync({ passkeyId: id });
+            toast.success("Passkey removed");
+            setPasskeyDeleteOpen(null);
+            refetchPasskeys();
+        } catch (error: any) {
+            toast.error(error?.message || "Failed to remove passkey");
+        }
     };
 
     const handleResendVerification = async () => {
@@ -390,6 +437,74 @@ export function SecuritySettings() {
                     </CardContent>
                 )}
             </Card>
+
+            {/* Passkeys (WebAuthn) */}
+            {browserSupportsWebAuthn() && (
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950 shrink-0">
+                                    <Fingerprint className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                                </div>
+                                <div className="min-w-0">
+                                    <CardTitle>Passkeys</CardTitle>
+                                    <CardDescription>
+                                        Sign in with biometrics or security keys instead of a password
+                                    </CardDescription>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {passkeys && passkeys.length > 0 && (
+                                    <Badge variant="secondary">{passkeys.length}</Badge>
+                                )}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setPasskeyRegisterOpen(true)}
+                                >
+                                    <Fingerprint className="mr-2 h-4 w-4" />
+                                    Add Passkey
+                                </Button>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    {passkeys && passkeys.length > 0 && (
+                        <CardContent>
+                            <div className="space-y-3">
+                                {passkeys.map((pk) => (
+                                    <div
+                                        key={pk.id}
+                                        className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <Fingerprint className="h-5 w-5 text-slate-400 shrink-0" />
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-medium truncate">
+                                                    {pk.friendlyName || "Unnamed passkey"}
+                                                </p>
+                                                <p className="text-xs text-slate-500">
+                                                    Added {new Date(pk.createdAt).toLocaleDateString()}
+                                                    {pk.lastUsedAt && ` \u00b7 Last used ${new Date(pk.lastUsedAt).toLocaleDateString()}`}
+                                                    {pk.backedUp && " \u00b7 Synced"}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setPasskeyDeleteOpen(pk.id)}
+                                            className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    )}
+                </Card>
+            )}
 
             {/* Password Change */}
             <Card>
@@ -838,6 +953,78 @@ export function SecuritySettings() {
                                 </>
                             ) : (
                                 "Change Password"
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Passkey Register Dialog */}
+            <Dialog open={passkeyRegisterOpen} onOpenChange={(open) => {
+                if (!open) {
+                    setPasskeyRegisterOpen(false);
+                    setPasskeyFriendlyName("");
+                }
+            }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Fingerprint className="w-5 h-5" />
+                            Register Passkey
+                        </DialogTitle>
+                        <DialogDescription>
+                            Add a passkey to sign in with biometrics or a security key.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="passkey-name">Name (optional)</Label>
+                            <Input
+                                id="passkey-name"
+                                value={passkeyFriendlyName}
+                                onChange={(e) => setPasskeyFriendlyName(e.target.value)}
+                                placeholder='e.g. "MacBook Pro" or "iPhone"'
+                                maxLength={100}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setPasskeyRegisterOpen(false); setPasskeyFriendlyName(""); }}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleRegisterPasskey} disabled={isRegisteringPasskey}>
+                            {isRegisteringPasskey ? (
+                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registering...</>
+                            ) : (
+                                "Register"
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Passkey Delete Confirmation Dialog */}
+            <Dialog open={passkeyDeleteOpen !== null} onOpenChange={(open) => { if (!open) setPasskeyDeleteOpen(null); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Remove Passkey</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to remove this passkey? You will no longer be able to sign in with it.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setPasskeyDeleteOpen(null)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={() => passkeyDeleteOpen !== null && handleDeletePasskey(passkeyDeleteOpen)}
+                            disabled={deletePasskeyMutation.isPending}
+                        >
+                            {deletePasskeyMutation.isPending ? (
+                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Removing...</>
+                            ) : (
+                                "Remove"
                             )}
                         </Button>
                     </DialogFooter>
