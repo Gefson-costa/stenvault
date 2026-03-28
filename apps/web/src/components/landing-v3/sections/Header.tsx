@@ -83,7 +83,7 @@ export function Header() {
                         'isRoute' in link && link.isRoute ? (
                             <Link
                                 key={link.href}
-                                href={link.href}
+                                to={link.href}
                                 className="text-sm text-slate-400 hover:text-white transition-colors duration-300"
                             >
                                 {link.label}
@@ -160,7 +160,7 @@ export function Header() {
                         'isRoute' in link && link.isRoute ? (
                             <Link
                                 key={link.href}
-                                href={link.href}
+                                to={link.href}
                                 className="text-sm text-slate-300 hover:text-white py-2"
                                 onClick={closeMobileMenu}
                             >

@@ -73,7 +73,7 @@ export function AuthLayout({
                     <BrandLogo />
                     {showBackLink && (
                         <Link
-                            href={backLinkUrl}
+                            to={backLinkUrl}
                             className="flex items-center gap-1.5 text-[12px] uppercase tracking-widest text-slate-500 hover:text-indigo-400 transition-colors font-medium"
                         >
                             <ArrowLeft className="w-3 h-3" />

@@ -254,7 +254,7 @@ export default function SendPage() {
           </Link>
           <div className="flex items-center gap-3">
             <Link
-              href="/send/local"
+              to="/send/local"
               className="hidden sm:inline-flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-emerald-400"
               style={{ color: LANDING_COLORS.textSecondary }}
             >
@@ -263,7 +263,7 @@ export default function SendPage() {
             </Link>
             {isAuthenticated ? (
               <Link
-                href="/home"
+                to="/home"
                 className="hidden sm:inline-flex text-sm font-medium transition-colors hover:text-white"
                 style={{ color: LANDING_COLORS.textSecondary }}
               >
@@ -271,7 +271,7 @@ export default function SendPage() {
               </Link>
             ) : (
               <Link
-                href="/auth/login"
+                to="/auth/login"
                 className="hidden sm:inline-flex text-sm font-medium transition-colors hover:text-white"
                 style={{ color: LANDING_COLORS.textSecondary }}
               >
@@ -350,7 +350,7 @@ export default function SendPage() {
 
             {/* ═══════════ LOCAL SEND BANNER ═══════════ */}
             <Link
-              href="/send/local"
+              to="/send/local"
               className="flex items-center gap-3 p-3.5 rounded-xl border mb-8 transition-all hover:scale-[1.005] group"
               style={{
                 borderColor: `${LANDING_COLORS.success}25`,
@@ -830,7 +830,7 @@ export default function SendPage() {
                           <Crown className="w-4 h-4 text-indigo-400 shrink-0" />
                           <span style={{ color: LANDING_COLORS.textSecondary }}>
                             <Link
-                              href="/auth/register?ref=send"
+                              to="/auth/register?ref=send"
                               className="text-indigo-400 font-medium hover:underline"
                             >
                               Sign up
@@ -1135,21 +1135,21 @@ export default function SendPage() {
           </div>
           <div className="flex items-center gap-6">
             <Link
-              href="/send/local"
+              to="/send/local"
               className="text-xs transition-colors hover:text-indigo-400"
               style={{ color: LANDING_COLORS.textMuted }}
             >
               LAN Transfer
             </Link>
             <Link
-              href="/"
+              to="/"
               className="text-xs transition-colors hover:text-indigo-400"
               style={{ color: LANDING_COLORS.textMuted }}
             >
               Home
             </Link>
             <Link
-              href="/auth/register"
+              to="/auth/register"
               className="text-xs transition-colors hover:text-indigo-400"
               style={{ color: LANDING_COLORS.textMuted }}
             >

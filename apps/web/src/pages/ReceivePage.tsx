@@ -979,7 +979,7 @@ export default function ReceivePage() {
                           Saved to your vault
                         </div>
                         <Link
-                          href="/drive"
+                          to="/drive"
                           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-colors"
                           style={{
                             borderColor: LANDING_COLORS.border,
@@ -1181,7 +1181,7 @@ export default function ReceivePage() {
 
                 {/* Transfer locally (LAN) */}
                 <Link
-                  href="/send/local"
+                  to="/send/local"
                   className="flex items-center gap-3 p-4 rounded-xl border transition-all hover:scale-[1.01] group"
                   style={{
                     borderColor: `${LANDING_COLORS.success}25`,
@@ -1301,21 +1301,21 @@ export default function ReceivePage() {
           {/* Links */}
           <div className="flex items-center justify-center gap-6">
             <Link
-              href="/send?ref=send"
+              to="/send?ref=send"
               className="text-xs transition-colors hover:text-indigo-400"
               style={{ color: LANDING_COLORS.textMuted }}
             >
               Send a file
             </Link>
             <Link
-              href="/send/local"
+              to="/send/local"
               className="text-xs transition-colors hover:text-emerald-400"
               style={{ color: LANDING_COLORS.textMuted }}
             >
               LAN Transfer
             </Link>
             <Link
-              href="/auth/register?ref=send"
+              to="/auth/register?ref=send"
               className="text-xs transition-colors hover:text-indigo-400"
               style={{ color: LANDING_COLORS.textMuted }}
             >

@@ -247,7 +247,7 @@ export default function LocalSendPage() {
           </div>
           <div className="flex items-center gap-3">
             <Link
-              href="/send"
+              to="/send"
               className="hidden sm:inline-flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-indigo-400"
               style={{ color: LANDING_COLORS.textSecondary }}
             >
@@ -832,14 +832,14 @@ export default function LocalSendPage() {
           </div>
           <div className="flex items-center justify-center gap-6">
             <Link
-              href="/send"
+              to="/send"
               className="text-xs transition-colors hover:text-indigo-400"
               style={{ color: LANDING_COLORS.textMuted }}
             >
               Cloud Send
             </Link>
             <Link
-              href="/auth/register?ref=local-send"
+              to="/auth/register?ref=local-send"
               className="text-xs transition-colors hover:text-indigo-400"
               style={{ color: LANDING_COLORS.textMuted }}
             >
