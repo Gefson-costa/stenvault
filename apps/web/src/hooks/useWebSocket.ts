@@ -85,7 +85,6 @@ export function useWebSocket() {
     const onInviteAcceptedRef = useRef<(event: InviteAcceptedEvent) => void>(() => { });
     const onShareRevokedRef = useRef<(event: ShareRevokedEvent) => void>(() => { });
     const onFileSharedRef = useRef<(event: FileSharedEvent) => void>(() => { });
-    const onEmailVerifiedRef = useRef<(event: { userId: number }) => void>(() => { });
 
     /**
      * Connect to WebSocket server
@@ -202,13 +201,6 @@ export function useWebSocket() {
         socket.on("chat:file-shared", (event: FileSharedEvent) => {
             debugLog('[WebSocket]', `File shared: ${event.filename} from user ${event.fromUserId}`);
             onFileSharedRef.current(event);
-        });
-
-        // Email verification event — dispatch DOM event so useEmailVerification reacts
-        socket.on("email:verified", () => {
-            debugLog('[WebSocket]', 'Email verified via external action');
-            window.dispatchEvent(new Event('email-verified'));
-            onEmailVerifiedRef.current({ userId: 0 });
         });
 
         // Error events
@@ -374,7 +366,5 @@ export function useWebSocket() {
         // File share events
         onShareRevoked: createEventRegistration(onShareRevokedRef),
         onFileShared: createEventRegistration(onFileSharedRef),
-        // Auth events
-        onEmailVerified: createEventRegistration(onEmailVerifiedRef),
     };
 }

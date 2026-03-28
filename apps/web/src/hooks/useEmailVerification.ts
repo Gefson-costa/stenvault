@@ -78,7 +78,13 @@ export function useEmailVerification(emailVerified?: boolean) {
             reconnectionDelay: 2000,
         });
 
+        socket.on('connect_error', (err) => {
+            console.warn('[EmailVerification] WebSocket connection failed:', err.message);
+        });
+
         socket.on('email:verified', () => {
+            // Guard: skip if already handled by OTP mutation onSuccess
+            if (!socketRef.current) return;
             setIsModalOpen(false);
             localStorage.removeItem(BANNER_DISMISS_KEY);
             toast.success('Email verified!');
@@ -99,6 +105,12 @@ export function useEmailVerification(emailVerified?: boolean) {
     // Verify with OTP
     const verifyWithOTP = trpc.auth.verifyEmailOTP.useMutation({
         onSuccess: () => {
+            // Disconnect WS first to prevent duplicate toast from email:verified event
+            if (socketRef.current) {
+                socketRef.current.disconnect();
+                socketRef.current = null;
+            }
+
             toast.success('Email verified successfully!');
             setIsModalOpen(false);
 
